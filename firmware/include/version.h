@@ -1,0 +1,19 @@
+#ifndef EXPLORE_AI_VERSION_H
+#define EXPLORE_AI_VERSION_H
+
+#define FIRMWARE_VERSION_MAJOR 1
+#define FIRMWARE_VERSION_MINOR 0
+#define FIRMWARE_VERSION_PATCH 0
+#define FIRMWARE_VERSION_STR   "1.0.0"
+#define FIRMWARE_NAME          "Explore AI Assistant"
+#define PROTOCOL_VERSION       1
+
+#if defined(BOARD_ESP32_S3)
+    #define HARDWARE_VARIANT_STR "ESP32-S3"
+#elif defined(BOARD_ESP32_C3)
+    #define HARDWARE_VARIANT_STR "ESP32-C3"
+#else
+    #define HARDWARE_VARIANT_STR "ESP32-WROOM"
+#endif
+
+#endif // EXPLORE_AI_VERSION_H

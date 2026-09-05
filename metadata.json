@@ -1,0 +1,6 @@
+{
+  "name": "Explore AI Assistant",
+  "description": "Cloud-connected ESP32 AI voice assistant with USB firmware flashing, multi-module ESP32 selection, INMP441 microphone, MAX98357A amplifier, multi-type display, and 4/8-channel relay pin configurator.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
