@@ -48,7 +48,7 @@ export const UsbFlasherView: React.FC<UsbFlasherViewProps> = ({
   const [isSerialConnected, setIsSerialConnected] = useState<boolean>(false);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
 
-  const terminalEndRef = useRef<HTMLDivElement>(null);
+  const terminalContainerRef = useRef<HTMLDivElement>(null);
   const isWebSerialSupported = usbFlasher.isWebSerialSupported();
 
   // Subscribe to usbFlasher service events
@@ -75,10 +75,10 @@ export const UsbFlasherView: React.FC<UsbFlasherViewProps> = ({
     };
   }, []);
 
-  // Auto-scroll terminal
+  // Auto-scroll terminal strictly inside container
   useEffect(() => {
-    if (autoScroll && terminalEndRef.current) {
-      terminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (autoScroll && terminalContainerRef.current) {
+      terminalContainerRef.current.scrollTop = terminalContainerRef.current.scrollHeight;
     }
   }, [logs, autoScroll]);
 
@@ -408,7 +408,7 @@ export const UsbFlasherView: React.FC<UsbFlasherViewProps> = ({
         </div>
 
         {/* Monospace Console Body */}
-        <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-xs h-80 overflow-y-auto space-y-1 scrollbar-thin">
+        <div ref={terminalContainerRef} className="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-xs h-80 overflow-y-auto space-y-1 scrollbar-thin">
           {logs.length === 0 ? (
             <div className="text-slate-600 italic py-10 text-center">
               Serial console idle. Click "Connect & Flash ESP32" or "Simulated Flash Test" to start stream.
@@ -444,7 +444,6 @@ export const UsbFlasherView: React.FC<UsbFlasherViewProps> = ({
               );
             })
           )}
-          <div ref={terminalEndRef} />
         </div>
 
         {/* Command Input Bar */}

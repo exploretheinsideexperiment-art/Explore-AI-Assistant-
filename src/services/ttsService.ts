@@ -45,32 +45,22 @@ export class TTSService {
     return this.cachedVoices;
   }
 
-  public speak(
-    text: string,
-    settings: AgentSettings,
-    onStart?: () => void,
-    onEnd?: () => void
-  ): void {
-    if (!this.synth) {
-      if (onStart) onStart();
-      setTimeout(() => { if (onEnd) onEnd(); }, 2000);
-      return;
-    }
+  private queueCount: number = 0;
+  private onQueueAllEndCallback?: () => void;
 
-    // Cancel any currently playing speech
-    this.synth.cancel();
-
-    // Clean text of markdown artifacts
+  private createUtterance(text: string, settings: AgentSettings): SpeechSynthesisUtterance {
     const cleanedText = text
       .replace(/[*_#`~[\]]/g, '')
-      .replace(/\n+/g, ' ')
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/\s+/g, ' ')
       .trim();
 
     const utterance = new SpeechSynthesisUtterance(cleanedText);
     const requestedGender: VoiceGender = settings.voiceGender || 'Female';
 
-    // Base rate and pitch
-    utterance.rate = settings.voiceSpeed || 1.0;
+    // Snappy speech rate: default ~1.12x for quick responsive voice assistant feel
+    const baseSpeed = settings.voiceSpeed || 1.0;
+    utterance.rate = Math.max(1.06, baseSpeed * 1.10);
 
     // Detect language code
     const langMap: Record<string, string> = {
@@ -150,21 +140,13 @@ export class TTSService {
     let selectedVoice: SpeechSynthesisVoice | null = null;
 
     if (requestedGender === 'Male') {
-      // 1. Try to find a male voice for the target language (e.g., Hindi or Indian English male)
       selectedVoice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix) && isVoiceMale(v.name)) || null;
-
-      // 2. If no male voice for that specific language, find an Indian English male voice or general English male voice
       if (!selectedVoice) {
         selectedVoice = voices.find(v => (v.lang.toLowerCase().includes('en-in') || v.lang.toLowerCase().includes('en')) && isVoiceMale(v.name)) || null;
       }
-
-      // 3. If still no male voice found, find ANY male voice in the browser
       if (!selectedVoice) {
         selectedVoice = voices.find(v => isVoiceMale(v.name)) || null;
       }
-
-      // 4. If no male voice exists at all on this system (e.g. some devices only install one default voice),
-      // pick the best language voice BUT drastically drop the pitch to 0.65 to generate an unmistakable male baritone!
       if (!selectedVoice) {
         selectedVoice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix)) || null;
       }
@@ -173,23 +155,14 @@ export class TTSService {
         utterance.voice = selectedVoice;
       }
 
-      // Explicit masculine pitch: if system voice is known male, pitch 0.82 is great.
-      // If voice is female or generic, pitch 0.65 lowers fundamental frequency from 220Hz into ~120Hz male range!
       const isActuallyMaleVoice = selectedVoice ? isVoiceMale(selectedVoice.name) : false;
       const basePitch = settings.voicePitch && settings.voicePitch !== 1.0 ? settings.voicePitch : 1.0;
       utterance.pitch = isActuallyMaleVoice ? basePitch * 0.82 : basePitch * 0.65;
-      utterance.rate = (settings.voiceSpeed || 1.0) * 0.94; // slightly deeper cadence
     } else {
-      // Requested Female Voice
-      // 1. Match target language and female voice
       selectedVoice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix) && (isVoiceFemale(v.name) || !isVoiceMale(v.name))) || null;
-
-      // 2. Match any female voice in the browser
       if (!selectedVoice) {
         selectedVoice = voices.find(v => isVoiceFemale(v.name)) || null;
       }
-
-      // 3. Fallback to target language
       if (!selectedVoice) {
         selectedVoice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix)) || null;
       }
@@ -200,8 +173,115 @@ export class TTSService {
 
       const basePitch = settings.voicePitch && settings.voicePitch !== 1.0 ? settings.voicePitch : 1.0;
       utterance.pitch = basePitch * 1.06;
-      utterance.rate = settings.voiceSpeed || 1.0;
     }
+
+    return utterance;
+  }
+
+  /**
+   * Start a fresh streaming speech session (cancels prior speech and resets queue)
+   */
+  public startStreamingSession(onAllEnd?: () => void): void {
+    if (!this.synth) return;
+    if (this.synth.speaking || this.synth.pending) {
+      this.synth.cancel();
+    }
+    if (this.synth.paused) {
+      this.synth.resume();
+    }
+    this.queueCount = 0;
+    this.isSpeaking = false;
+    this.onQueueAllEndCallback = onAllEnd;
+  }
+
+  /**
+   * Enqueues a single sentence for immediate or seamless sequential playback
+   */
+  public enqueueSentence(
+    sentence: string,
+    settings: AgentSettings,
+    onFirstStart?: () => void
+  ): void {
+    if (!this.synth) return;
+    const clean = sentence.trim();
+    if (!clean) return;
+
+    if (this.synth.paused) {
+      this.synth.resume();
+    }
+
+    const utterance = this.createUtterance(clean, settings);
+    this.queueCount++;
+
+    utterance.onstart = () => {
+      this.isSpeaking = true;
+      if (onFirstStart) onFirstStart();
+    };
+
+    utterance.onend = () => {
+      this.queueCount = Math.max(0, this.queueCount - 1);
+      if (this.queueCount <= 0) {
+        this.queueCount = 0;
+        this.isSpeaking = false;
+        if (this.onQueueAllEndCallback) {
+          const cb = this.onQueueAllEndCallback;
+          this.onQueueAllEndCallback = undefined;
+          cb();
+        }
+      }
+    };
+
+    utterance.onerror = (e: any) => {
+      // Chrome fires canceled/interrupted if new speech begins, which is normal
+      if (e?.error !== 'canceled' && e?.error !== 'interrupted') {
+        console.warn('[TTS] Speech queue error:', e);
+      }
+      this.queueCount = Math.max(0, this.queueCount - 1);
+      if (this.queueCount <= 0) {
+        this.queueCount = 0;
+        this.isSpeaking = false;
+        if (this.onQueueAllEndCallback) {
+          const cb = this.onQueueAllEndCallback;
+          this.onQueueAllEndCallback = undefined;
+          cb();
+        }
+      }
+    };
+
+    // Small delay ensures Chrome has finished resetting audio hardware after cancel
+    setTimeout(() => {
+      try {
+        if (this.synth) {
+          if (this.synth.paused) {
+            this.synth.resume();
+          }
+          this.synth.speak(utterance);
+        }
+      } catch (err) {
+        console.warn('[TTS] Speech synthesis speak exception:', err);
+      }
+    }, 20);
+  }
+
+  public speak(
+    text: string,
+    settings: AgentSettings,
+    onStart?: () => void,
+    onEnd?: () => void
+  ): void {
+    if (!this.synth) {
+      if (onStart) onStart();
+      setTimeout(() => { if (onEnd) onEnd(); }, 2000);
+      return;
+    }
+
+    // Cancel any currently playing speech and unpause audio
+    this.synth.cancel();
+    if (this.synth.paused) {
+      this.synth.resume();
+    }
+
+    const utterance = this.createUtterance(text, settings);
 
     utterance.onstart = () => {
       this.isSpeaking = true;
@@ -223,6 +303,8 @@ export class TTSService {
   }
 
   public stop(): void {
+    this.queueCount = 0;
+    this.onQueueAllEndCallback = undefined;
     if (this.synth) {
       this.synth.cancel();
     }

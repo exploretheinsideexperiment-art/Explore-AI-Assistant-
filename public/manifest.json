@@ -2,14 +2,14 @@
   "name": "Explore AI Assistant",
   "short_name": "Explore AI",
   "description": "ESP32 Cloud AI Voice Assistant Management & Console",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#020617",
   "theme_color": "#06b6d4",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "icon.svg",
       "sizes": "192x192 512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"

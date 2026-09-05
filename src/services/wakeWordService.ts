@@ -42,32 +42,73 @@ export class WakeWordService {
       const gain = this.audioCtx.createGain();
 
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.exponentialRampToValueAtTime(0.2, now + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+      gain.gain.exponentialRampToValueAtTime(0.22, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
 
-      // Pitch: D5 (587.33 Hz) jumping to A5 (880.00 Hz)
+      // Snappy two-tone energetic chime: 659.25 Hz (E5) jumping to 1046.5 Hz (C6)
       osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(587.33, now);
-      osc1.frequency.setValueAtTime(880.0, now + 0.12);
+      osc1.frequency.setValueAtTime(659.25, now);
+      osc1.frequency.setValueAtTime(1046.5, now + 0.07);
 
       osc2.type = 'triangle';
-      osc2.frequency.setValueAtTime(1174.66, now + 0.12); // subtle harmonic sparkle
+      osc2.frequency.setValueAtTime(1318.5, now + 0.07); // light high harmonic
 
       osc1.connect(gain);
       osc2.connect(gain);
       gain.connect(this.audioCtx.destination);
 
       osc1.start(now);
-      osc2.start(now + 0.12);
-      osc1.stop(now + 0.28);
-      osc2.stop(now + 0.28);
+      osc2.start(now + 0.07);
+      osc1.stop(now + 0.16);
+      osc2.stop(now + 0.16);
     } catch (e) {
       console.warn('[WakeWord] Chime audio playback skipped:', e);
     }
   }
 
   /**
-   * Analyzes speech transcript for "Hey Explorer" patterns in English, Hindi, and Hinglish.
+   * Plays a gentle descending chime when the microphone turns off
+   */
+  public playSleepChime(): void {
+    try {
+      if (typeof window === 'undefined') return;
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtxClass) return;
+
+      if (!this.audioCtx || this.audioCtx.state === 'closed') {
+        this.audioCtx = new AudioCtxClass();
+      }
+
+      if (this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume();
+      }
+
+      const now = this.audioCtx.currentTime;
+      const osc = this.audioCtx.createOscillator();
+      const gain = this.audioCtx.createGain();
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.12, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+      // Pitch: descending A5 (880 Hz) to D5 (587.33 Hz)
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880.0, now);
+      osc.frequency.setValueAtTime(587.33, now + 0.1);
+
+      osc.connect(gain);
+      gain.connect(this.audioCtx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.22);
+    } catch (e) {
+      // AudioContext fallback
+    }
+  }
+
+  /**
+   * Analyzes speech transcript for "Hey Explorer", "Hi Explorer", "Hello Explorer" patterns
+   * in English, Hindi, and Hinglish.
    */
   public parseWakeWord(transcript: string): WakeWordResult {
     const text = transcript.trim();
@@ -75,25 +116,24 @@ export class WakeWordService {
       return { hasWakeWord: false, rawText: text, cleanedQuery: '', isWakeOnly: false };
     }
 
-    // Regex pattern matching "Hey Explorer", "Hey Explore", "Ok Explorer", "Hello Explorer", "Hey Xplorer",
-    // with optional punctuation after greeting (e.g. "Hey, Explorer"), and Hindi equivalents
-    const wakeRegex = /^(?:(?:hey|hay|hi|hello|ok|okay|अरे|हे|सुनो|ऐ)[,\s!?-]+)?(?:explorer|explore|explorers|xplorer|xplore|axplorer|इक्स्प्लोरर|एक्सप्लोरर|एक्सप्लोर|एक्स्प्लोरर)[\s,:.!?-]*/i;
-    const generalWakeRegex = /(?:(?:hey|hay|hi|hello|ok|okay|अरे|हे|सुनो|ऐ)[,\s!?-]+)?(?:explorer|explore|explorers|xplorer|xplore|axplorer|इक्स्प्लोरर|एक्सप्लोरर|एक्सप्लोर|एक्स्प्लोरर)[\s,:.!?-]*/i;
+    // Explicit wake greetings: "hey explorer", "hi explorer", "hello explorer", "ok explorer", etc.
+    const greetingWakeRegex = /(?:^|\b)(hey|hay|hi|hello|ok|okay|a|the|हे|नमस्ते|सुनो|अरे|ऐ)[,\s!?-]+(explorer|xplorer|explore|explorers|explore\s*ai|एक्सप्लोरर|एक्स्प्लोरर|इक्स्प्लोरर)\b[\s,:.!?-]*/i;
 
-    let matched = text.match(wakeRegex);
+    // Direct address at the beginning: "Explorer, what is..." or "Explore AI, what is..."
+    const directWakeRegex = /^(?:explorer|xplorer|explore\s*ai|एक्सप्लोरर|एक्स्प्लोरर)[\s,:.!?-]*/i;
+
+    let matched = text.match(greetingWakeRegex);
     let matchedIndex = 0;
     let matchedLength = 0;
 
-    if (matched && matched[0].trim().length > 0) {
-      matchedIndex = matched.index || 0;
+    if (matched && matched.index !== undefined) {
+      matchedIndex = matched.index;
       matchedLength = matched[0].length;
     } else {
-      // Check if wake word occurred anywhere in the spoken phrase
-      const midMatch = text.match(generalWakeRegex);
-      if (midMatch && midMatch.index !== undefined && midMatch[0].trim().length > 0) {
-        matched = midMatch;
-        matchedIndex = midMatch.index;
-        matchedLength = midMatch[0].length;
+      matched = text.match(directWakeRegex);
+      if (matched && matched.index !== undefined) {
+        matchedIndex = matched.index;
+        matchedLength = matched[0].length;
       }
     }
 
