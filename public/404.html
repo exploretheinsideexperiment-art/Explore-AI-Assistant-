@@ -9,8 +9,12 @@
       (function() {
         var segmentCount = 1; // 1 segment for https://username.github.io/repo-name/
         var l = window.location;
-        // If on root domain (custom domain or username.github.io directly)
-        if (l.hostname.endsWith('.github.io') && l.pathname.split('/')[1] && l.pathname.split('/')[1] === l.hostname.split('.')[0]) {
+        // Determine segment count:
+        // 0 segments for custom domains (e.g. example.com/my-page) or user pages (user.github.io/my-page)
+        // 1 segment for GitHub project pages (e.g. user.github.io/repo-name/my-page)
+        var isGitHubIo = l.hostname.endsWith('.github.io');
+        var isUserRootPage = isGitHubIo && l.pathname.split('/')[1] && l.pathname.split('/')[1] === l.hostname.split('.')[0];
+        if (!isGitHubIo || isUserRootPage) {
           segmentCount = 0;
         }
         var pathSegments = l.pathname.split('/');
