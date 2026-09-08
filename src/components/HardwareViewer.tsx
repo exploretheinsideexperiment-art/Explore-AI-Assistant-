@@ -21,6 +21,23 @@ export const HardwareViewer: React.FC<HardwareViewerProps> = ({
   };
 
   const pinTables: Record<HardwareVariant, { module: string; pinName: string; gpio: string; note: string }[]> = {
+    'ESP32-DEVKIT-V1-CH340': [
+      { module: 'WCH CH340 USB-UART', pinName: 'Micro-USB / Type-C', gpio: 'DTR/RTS -> EN, IO0', note: 'Hold BOOT (IO0) button if flasher waits on "Connecting..."' },
+      { module: 'SSD1306 OLED (I2C)', pinName: 'SDA', gpio: 'GPIO 21 (D21)', note: 'Default I2C Data line with internal/external pull-up' },
+      { module: 'SSD1306 OLED (I2C)', pinName: 'SCL', gpio: 'GPIO 22 (D22)', note: 'Default I2C Clock line (400kHz Fast Mode)' },
+      { module: 'INMP441 Mic (I2S0)', pinName: 'SCK (BCLK)', gpio: 'GPIO 14 (D14)', note: 'I2S Bit Clock (Direct to INMP441 SCK)' },
+      { module: 'INMP441 Mic (I2S0)', pinName: 'WS (LRCK)', gpio: 'GPIO 15 (D15)', note: 'I2S Word Select (Left/Right clock)' },
+      { module: 'INMP441 Mic (I2S0)', pinName: 'SD (DATA)', gpio: 'GPIO 32 (D32)', note: 'Serial Audio Data In from microphone' },
+      { module: 'INMP441 Mic (I2S0)', pinName: 'L/R', gpio: 'GND', note: 'Tied to GND for Left Channel acquisition' },
+      { module: 'INMP441 Mic (I2S0)', pinName: 'VDD / GND', gpio: '3V3 / GND', note: 'Use clean 3.3V rail from ESP32 DevKit V1' },
+      { module: 'MAX98357A Amp (I2S1)', pinName: 'BCLK', gpio: 'GPIO 26 (D26)', note: 'Audio Bit Clock to I2S DAC Amplifier' },
+      { module: 'MAX98357A Amp (I2S1)', pinName: 'LRC', gpio: 'GPIO 25 (D25)', note: 'Audio Word Select / Frame sync' },
+      { module: 'MAX98357A Amp (I2S1)', pinName: 'DIN', gpio: 'GPIO 27 (D27)', note: 'Digital PCM Audio Data into amplifier' },
+      { module: 'MAX98357A Amp (I2S1)', pinName: 'VIN', gpio: 'VIN (5V Rail)', note: 'Connect to 5V VIN from USB cable for full 3.2W volume' },
+      { module: 'Relay Module (4ch/8ch)', pinName: 'CH1 - CH4', gpio: 'GPIO 18, 19, 23, 33', note: 'Active LOW optocoupled relays (Safe non-boot pins)' },
+      { module: 'Push-to-Talk / Wake', pinName: 'BOOT Button', gpio: 'GPIO 0 (Onboard)', note: 'Onboard tactile BOOT switch (Dual function)' },
+      { module: 'Status LED', pinName: 'Blue LED', gpio: 'GPIO 2 (D2)', note: 'Onboard blue LED blinks during speech and network' }
+    ],
     'ESP32-S3': [
       { module: 'SSD1306 OLED (I2C)', pinName: 'SDA', gpio: 'GPIO 8', note: 'I2C Data line (4.7kΩ pullup)' },
       { module: 'SSD1306 OLED (I2C)', pinName: 'SCL', gpio: 'GPIO 9', note: 'I2C Clock line' },
@@ -123,7 +140,7 @@ export const HardwareViewer: React.FC<HardwareViewerProps> = ({
 
         {/* Board Variant Selector */}
         <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800">
-          {(['ESP32-S3', 'ESP32-WROOM', 'ESP32-C3', 'ESP32-CAM', 'ESP32-WROVER', 'ESP32-S2'] as HardwareVariant[]).map((v) => (
+          {(['ESP32-DEVKIT-V1-CH340', 'ESP32-S3', 'ESP32-WROOM', 'ESP32-C3', 'ESP32-CAM', 'ESP32-WROVER', 'ESP32-S2'] as HardwareVariant[]).map((v) => (
             <button
               key={v}
               onClick={() => setSelectedVariant(v)}
@@ -133,7 +150,7 @@ export const HardwareViewer: React.FC<HardwareViewerProps> = ({
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              {v}
+              {v === 'ESP32-DEVKIT-V1-CH340' ? 'DevKit V1 CH340' : v}
             </button>
           ))}
         </div>

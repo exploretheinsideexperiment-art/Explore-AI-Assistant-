@@ -39,16 +39,27 @@ function buildSystemPrompt(settings: any): string {
     'ml-IN': 'Respond in natural Malayalam (മലയാളം).',
     'pa-IN': 'Respond in natural Punjabi (ਪੰਜਾਬੀ).',
     'ur-PK': 'Respond in natural Urdu (اردو).',
-    'en-IN': 'Respond in clear Indian English with concise phrasing suitable for voice synthesis.'
+    'en-IN': 'Respond in clear, articulate Indian English with thorough, comprehensive, and detailed explanations.'
   };
 
   const lang = settings?.language || 'en-US';
   const langGuide = languageInstruction[lang] || 'Respond in clear, natural English.';
   const personalityGuide = personalityMap[settings?.personality] || personalityMap.educational;
 
-  return `You are Explore AI Assistant, an ultra-fast IoT voice assistant for ESP32 hardware and curious minds.
-Mission: Answer user questions clearly, accurately, and enthusiastically about science, technology, mathematics, general knowledge, electronics, microcontrollers, and everyday questions.
-Voice Rule: Provide a direct, natural spoken response in 1 to 3 engaging, punchy sentences (ideal for speech synthesis). Never say preambles like "Sure!", "Certainly!", or "As an AI". Answer the question directly!
+  return `You are Explore AI Assistant, an advanced, highly knowledgeable IoT AI voice assistant for ESP32 hardware and curious minds.
+Mission: Provide rich, deeply educational, accurate, and comprehensive explanations across science, technology, electronics, microcontrollers, programming, physics, history, mathematics, and general knowledge.
+CRITICAL ANSWER DEPTH & LENGTH DIRECTIVE:
+When the user asks ANY question, DO NOT give short, brief, or shallow answers. ALWAYS provide comprehensive, detailed, informative, and long answers!
+The user has strictly requested long answers: thoroughly explain underlying concepts, architectural mechanisms, step-by-step principles, real-world examples, and clear technical nuance.
+Provide a complete, multi-paragraph, deeply satisfying explanation that thoroughly educates the user rather than a 1-2 sentence truncated summary.
+Avoid unnecessary filler preambles like "Sure!" or "Certainly!". Jump straight into your comprehensive, informative explanation.
+CRITICAL SPOKEN TEXT & CLEAN WORDS DIRECTIVE:
+Your answers will be read aloud by an audio text-to-speech voice synthesizer.
+Write strictly in clear, natural spoken sentences and paragraphs.
+NEVER generate markdown tables (no pipes or divider lines). If comparing or listing items, describe them in fluent spoken sentences.
+NEVER use markdown headers with hashes.
+NEVER use raw formatting characters like asterisks, dashed divider lines, backticks, bullet dashes, or ASCII symbols.
+Use words instead of symbols and formatting characters, so that only clean words are read aloud.
 Personality: ${personalityGuide}
 Language Requirement: ${langGuide}
 ${settings?.systemPromptAddition ? 'Additional instructions: ' + settings.systemPromptAddition : ''}`;
@@ -89,7 +100,7 @@ app.post('/api/chat', async (req, res) => {
           model: settings.groqModel || 'llama-3.1-8b-instant',
           messages,
           temperature: Math.min(settings.temperature || 0.6, 0.7),
-          max_tokens: Math.min(settings.maxTokens || 250, 300),
+          max_tokens: Math.max(settings.maxTokens || 2000, 2500),
           stream: true
         })
       });
@@ -152,7 +163,7 @@ app.post('/api/chat', async (req, res) => {
         config: {
           systemInstruction: systemPrompt,
           temperature: 0.6,
-          maxOutputTokens: 300
+          maxOutputTokens: Math.max(settings.maxTokens || 2000, 2500)
         }
       });
 

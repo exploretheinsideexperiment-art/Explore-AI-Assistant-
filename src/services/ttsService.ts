@@ -48,19 +48,100 @@ export class TTSService {
   private queueCount: number = 0;
   private onQueueAllEndCallback?: () => void;
 
-  private createUtterance(text: string, settings: AgentSettings): SpeechSynthesisUtterance {
-    const cleanedText = text
-      .replace(/[*_#`~[\]]/g, '')
-      .replace(/https?:\/\/\S+/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+  /**
+   * Thoroughly sanitizes text so speech synthesis reads ONLY pure spoken words.
+   * Strips out markdown tables (|---|---|), pipes (|), hashes (#), divider dashes,
+   * bullets, code blocks, URLs, and non-spoken formatting symbols.
+   */
+  public static cleanTextForSpeech(rawText: string): string {
+    if (!rawText || typeof rawText !== 'string') return '';
+
+    let text = rawText;
+
+    // 1. Remove markdown code blocks completely: ```lang ... ```
+    text = text.replace(/```[\s\S]*?```/g, ' ');
+
+    // 2. Remove markdown images: ![alt](url)
+    text = text.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');
+
+    // 3. Convert markdown links: [label](url) -> label
+    text = text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+
+    // 4. Remove plain URLs: https://... or http://...
+    text = text.replace(/https?:\/\/\S+/gi, ' ');
+
+    // 5. Remove markdown table delimiter / divider rows like |---|---| or |:---|---:| or +---+---+
+    text = text.replace(/^\s*\|?[-:| ]+\|?\s*$/gm, ' ');
+
+    // 6. Handle table rows: replace pipes '|' with a natural pause (comma or space)
+    // For example: "| Speed | 240 MHz |" -> "Speed, 240 MHz"
+    text = text.replace(/\|/g, ', ');
+
+    // 7. Remove markdown horizontal rules (---, ***, ___, ===)
+    text = text.replace(/^\s*[-*_=\s]{3,}\s*$/gm, ' ');
+
+    // 8. Remove markdown headers syntax (### Title -> Title, # -> space)
+    text = text.replace(/#{1,6}\s*/g, ' ');
+
+    // 9. Remove bullet point markers at start of lines (*, -, +, •, ‣, ⁃)
+    text = text.replace(/(^|\n)\s*[-*+•‣⁃]\s+/g, '$1 ');
+
+    // 10. Replace common symbols with spoken words or spaces
+    text = text
+      .replace(/&/g, ' and ')
+      .replace(/@/g, ' at ')
+      .replace(/%/g, ' percent ')
+      .replace(/°C/g, ' degrees Celsius ')
+      .replace(/°F/g, ' degrees Fahrenheit ')
+      .replace(/°/g, ' degrees ')
+      .replace(/\$/g, ' dollars ')
+      .replace(/₹/g, ' rupees ')
+      .replace(/=/g, ' equals ')
+      .replace(/\+/g, ' plus ')
+      .replace(/\//g, ' ')
+      .replace(/\\/g, ' ');
+
+    // 11. Remove all formatting symbols, brackets, braces, quotes, etc.
+    // Specifically targets: # * _ ` ~ ^ < > [ ] { } ( ) " ' « »
+    text = text.replace(/[*_#`~^<>[\]{}()"'«»]/g, ' ');
+
+    // 12. Remove standalone hyphens / dashes (preserve intra-word hyphens like "real-time")
+    text = text.replace(/--+/g, ' ');
+    text = text.replace(/(^|\s)-+(\s|$)/g, '$1 $2');
+
+    // 13. Remove emojis and miscellaneous non-verbal symbols
+    text = text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, ' ');
+
+    // 14. Clean up multiple punctuation marks: e.g. ",,", "..", "?!", ",."
+    text = text.replace(/[,;:]\s*[,;:]+/g, ',');
+    text = text.replace(/\.{2,}/g, '.');
+    text = text.replace(/[!]{2,}/g, '!');
+    text = text.replace(/[?]{2,}/g, '?');
+    text = text.replace(/\s+([,.;!?])/g, '$1');
+
+    // 15. Normalize spaces and trim
+    text = text.replace(/\s+/g, ' ').trim();
+
+    // 16. If text contains no letters or digits, return empty string
+    if (!/[a-zA-Z0-9\u0900-\u0DFF]/.test(text)) {
+      return '';
+    }
+
+    return text;
+  }
+
+  private createUtterance(text: string, settings: AgentSettings): SpeechSynthesisUtterance | null {
+    const cleanedText = TTSService.cleanTextForSpeech(text);
+    if (!cleanedText) {
+      return null;
+    }
 
     const utterance = new SpeechSynthesisUtterance(cleanedText);
     const requestedGender: VoiceGender = settings.voiceGender || 'Female';
 
-    // Snappy speech rate: default ~1.12x for quick responsive voice assistant feel
+    // Natural human conversational rate (default 1.0; no artificial robotic acceleration)
     const baseSpeed = settings.voiceSpeed || 1.0;
-    utterance.rate = Math.max(1.06, baseSpeed * 1.10);
+    utterance.rate = Math.min(Math.max(baseSpeed, 0.85), 1.15);
 
     // Detect language code
     const langMap: Record<string, string> = {
@@ -83,15 +164,16 @@ export class TTSService {
     const voices = this.getVoices();
     const langPrefix = utterance.lang.slice(0, 2).toLowerCase();
 
-    // Comprehensive male voice keyword identifiers across Windows, Mac, Android, Linux
+    // Comprehensive male voice keyword identifiers across Windows, Edge, Mac, Android, Chrome, Linux
     const isVoiceMale = (name: string): boolean => {
       const n = name.toLowerCase();
       return n.includes('male') || 
+             n.includes('guy') || 
+             n.includes('christopher') ||
              n.includes('madhur') || 
              n.includes('ravi') || 
              n.includes('david') || 
              n.includes('george') || 
-             n.includes('guy') || 
              n.includes('adam') || 
              n.includes('mark') || 
              n.includes('james') ||
@@ -110,6 +192,8 @@ export class TTSService {
              n.includes('prashant') || 
              n.includes('sean') || 
              n.includes('gordon') ||
+             n.includes('nathan') ||
+             n.includes('evan') ||
              n.includes('male_1') || 
              n.includes('#male');
     };
@@ -117,8 +201,11 @@ export class TTSService {
     const isVoiceFemale = (name: string): boolean => {
       const n = name.toLowerCase();
       return n.includes('female') || 
+             n.includes('natural') && (n.includes('jenny') || n.includes('aria') || n.includes('swara') || n.includes('neerja')) ||
              n.includes('swara') || 
              n.includes('neerja') || 
+             n.includes('jenny') ||
+             n.includes('aria') ||
              n.includes('zira') || 
              n.includes('samantha') || 
              n.includes('kavya') || 
@@ -134,46 +221,78 @@ export class TTSService {
              n.includes('sangeeta') || 
              n.includes('kalpana') || 
              n.includes('google हिन्दी') || 
+             n.includes('serena') ||
+             n.includes('ava') ||
+             n.includes('zoe') ||
              n.includes('#female');
     };
 
-    let selectedVoice: SpeechSynthesisVoice | null = null;
+    // Calculate naturalness score for human-like timbre vs robotic synthesizers
+    const scoreVoiceQuality = (voice: SpeechSynthesisVoice): number => {
+      const n = voice.name.toLowerCase();
+      let score = 0;
 
-    if (requestedGender === 'Male') {
-      selectedVoice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix) && isVoiceMale(v.name)) || null;
-      if (!selectedVoice) {
-        selectedVoice = voices.find(v => (v.lang.toLowerCase().includes('en-in') || v.lang.toLowerCase().includes('en')) && isVoiceMale(v.name)) || null;
-      }
-      if (!selectedVoice) {
-        selectedVoice = voices.find(v => isVoiceMale(v.name)) || null;
-      }
-      if (!selectedVoice) {
-        selectedVoice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix)) || null;
-      }
+      // Top-Tier Human Neural / Natural voices (Edge, Chrome, Windows 11, macOS, Android)
+      if (n.includes('online (natural)') || n.includes('natural')) score += 200;
+      if (n.includes('neural2') || n.includes('wavenet') || n.includes('neural')) score += 180;
+      if (n.includes('enhanced') || n.includes('premium') || n.includes('studio')) score += 160;
+      if (n.includes('google')) score += 140;
+      if (n.includes('siri') || n.includes('apple')) score += 130;
 
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
-      }
+      // Human name priorities
+      if (n.includes('swara') || n.includes('madhur') || n.includes('neerja') || n.includes('kabir')) score += 90;
+      if (n.includes('jenny') || n.includes('guy') || n.includes('aria') || n.includes('christopher')) score += 80;
 
-      const isActuallyMaleVoice = selectedVoice ? isVoiceMale(selectedVoice.name) : false;
-      const basePitch = settings.voicePitch && settings.voicePitch !== 1.0 ? settings.voicePitch : 1.0;
-      utterance.pitch = isActuallyMaleVoice ? basePitch * 0.82 : basePitch * 0.65;
-    } else {
-      selectedVoice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix) && (isVoiceFemale(v.name) || !isVoiceMale(v.name))) || null;
-      if (!selectedVoice) {
-        selectedVoice = voices.find(v => isVoiceFemale(v.name)) || null;
-      }
-      if (!selectedVoice) {
-        selectedVoice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix)) || null;
-      }
-
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
+      // Heavily penalize legacy robotic desktop/linux synthesizers
+      if (
+        n.includes('desktop') ||
+        n.includes('espeak') ||
+        n.includes('mbrola') ||
+        n.includes('festival') ||
+        n.includes('flite') ||
+        n.includes('compact') ||
+        n.includes('synthesizer') ||
+        n.includes('speech-dispatcher')
+      ) {
+        score -= 300;
       }
 
-      const basePitch = settings.voicePitch && settings.voicePitch !== 1.0 ? settings.voicePitch : 1.0;
-      utterance.pitch = basePitch * 1.06;
+      // Language match priority
+      if (voice.lang.toLowerCase() === utterance.lang.toLowerCase()) score += 80;
+      else if (voice.lang.toLowerCase().startsWith(langPrefix)) score += 50;
+      else if (voice.lang.toLowerCase().startsWith('en')) score += 20;
+
+      return score;
+    };
+
+    // Filter candidate voices by requested gender
+    let candidateVoices = voices.filter(v => {
+      if (requestedGender === 'Male') {
+        return isVoiceMale(v.name);
+      } else {
+        return isVoiceFemale(v.name) || !isVoiceMale(v.name);
+      }
+    });
+
+    if (candidateVoices.length === 0) {
+      candidateVoices = voices;
     }
+
+    // Sort to prioritize the most natural, human-sounding neural voice available
+    candidateVoices.sort((a, b) => scoreVoiceQuality(b) - scoreVoiceQuality(a));
+
+    const bestVoice = candidateVoices[0] || null;
+    if (bestVoice) {
+      utterance.voice = bestVoice;
+    }
+
+    // Preserve native human vocal pitch (1.0).
+    // Avoid artificial pitch scaling (like 0.65 or 0.82) which introduces metallic robotic timbre!
+    const userConfiguredPitch = typeof settings.voicePitch === 'number' && settings.voicePitch > 0
+      ? settings.voicePitch
+      : 1.0;
+
+    utterance.pitch = userConfiguredPitch;
 
     return utterance;
   }
@@ -211,6 +330,15 @@ export class TTSService {
     }
 
     const utterance = this.createUtterance(clean, settings);
+    if (!utterance) {
+      // The sentence contained only formatting symbols (e.g. |---| or #) and no speakable words
+      if (this.queueCount <= 0 && this.onQueueAllEndCallback) {
+        const cb = this.onQueueAllEndCallback;
+        this.onQueueAllEndCallback = undefined;
+        cb();
+      }
+      return;
+    }
     this.queueCount++;
 
     utterance.onstart = () => {
@@ -282,6 +410,10 @@ export class TTSService {
     }
 
     const utterance = this.createUtterance(text, settings);
+    if (!utterance) {
+      if (onEnd) onEnd();
+      return;
+    }
 
     utterance.onstart = () => {
       this.isSpeaking = true;

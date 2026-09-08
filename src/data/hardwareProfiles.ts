@@ -22,6 +22,64 @@ export interface BoardSpecification {
 }
 
 export const HARDWARE_BOARDS: Record<HardwareVariant, BoardSpecification> = {
+  'ESP32-DEVKIT-V1-CH340': {
+    id: 'ESP32-DEVKIT-V1-CH340',
+    name: 'ESP32-DevKit V1 CH340 (DOIT 30/38-Pin + WCH CH340)',
+    chipFamily: 'ESP32',
+    cpuArchitecture: 'Xtensa Dual-Core 32-bit LX6 @ 240MHz with CH340G USB UART',
+    flashSizeDefaultMb: 4,
+    hasPsramDefault: false,
+    usbType: 'USB-to-UART (CP2102/CH340)',
+    usableGpios: [0, 2, 4, 5, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33, 34, 35, 36, 39],
+    inputOnlyGpios: [34, 35, 36, 39], // Labeled D34, D35, VN, VP
+    strappingGpios: [0, 2, 12, 15],
+    flashReservedGpios: [6, 7, 8, 9, 10, 11],
+    recommendedPreset: {
+      variant: 'ESP32-DEVKIT-V1-CH340',
+      boardName: 'ESP32-DevKit-V1-CH340',
+      flashSizeMb: 4,
+      psram: false,
+      mic: {
+        bclk: 14,
+        ws: 15,
+        sd: 32,
+        channel: 'left',
+        i2sPort: 0
+      },
+      amp: {
+        bclk: 26,
+        lrc: 25,
+        din: 27,
+        gainDb: 12
+      },
+      display: {
+        type: 'SSD1306_I2C_128x64',
+        sda: 21,
+        scl: 22,
+        i2cAddress: '0x3C',
+        i2cFreqKhz: 400,
+        width: 128,
+        height: 64
+      },
+      relays: {
+        mode: '4ch',
+        logic: 'active_low',
+        channels: [
+          { id: 1, name: 'Living Room Light', gpio: 18, state: false },
+          { id: 2, name: 'Kitchen Light', gpio: 19, state: false },
+          { id: 3, name: 'Ceiling Fan', gpio: 23, state: false },
+          { id: 4, name: 'Smart Socket', gpio: 33, state: false }
+        ]
+      },
+      controls: {
+        actionButton: 0,
+        resetButton: 4,
+        statusLed: 2
+      }
+    },
+    notes: 'Classic DOIT DevKit V1 with WCH CH340G USB chip. When flashing via USB, hold the BOOT button for 2s if auto-reset capacitor is absent.'
+  },
+
   'ESP32-S3': {
     id: 'ESP32-S3',
     name: 'ESP32-S3 DevKitC-1 (Dual-Core LX7 + Native USB)',

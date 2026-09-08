@@ -49,5 +49,5 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   voiceMode: 'push_to_talk',
   systemPromptAddition: '',
   temperature: 0.6,
-  maxTokens: 500
+  maxTokens: 2500
 };

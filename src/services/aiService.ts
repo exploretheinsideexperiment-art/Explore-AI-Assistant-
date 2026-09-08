@@ -34,15 +34,25 @@ export class AIService {
       'ml-IN': 'Respond in natural Malayalam (മലയാളം).',
       'pa-IN': 'Respond in natural Punjabi (ਪੰਜਾਬੀ).',
       'ur-PK': 'Respond in natural Urdu (اردو).',
-      'en-IN': 'Respond in clear Indian English with concise phrasing suitable for voice synthesis.'
+      'en-IN': 'Respond in clear, articulate Indian English with thorough, comprehensive, and detailed explanations.'
     };
 
     const langGuide = languageInstruction[settings.language] || 'Respond in clear, natural English.';
     const personalityGuide = personalityMap[settings.personality] || personalityMap.educational;
 
-    return `You are Explore AI Assistant, an ultra-fast IoT AI voice assistant built for ESP32 and ESP32-S3 hardware.
-Your primary mission is to help users learn and explore technology, science, networking, electronics, IoT, microcontrollers, programming, history, mathematics, and general knowledge.
-Voice & Latency Rule: Respond immediately and directly. Keep answers to 1-3 punchy, engaging, crystal-clear sentences. Avoid preamble like "Sure!" or "Certainly!".
+    return `You are Explore AI Assistant, an advanced, highly articulate IoT AI voice assistant built for ESP32 and ESP32-S3 hardware.
+Your primary mission is to help users learn, understand, and explore science, technology, networking, electronics, IoT, microcontrollers, programming, history, mathematics, and general knowledge.
+CRITICAL ANSWER DEPTH & LENGTH DIRECTIVE:
+When the user asks any question, DO NOT give short, brief, or shallow answers. Always provide comprehensive, detailed, informative, and long answers!
+Thoroughly explain underlying concepts, architectural mechanisms, key components or stages, real-world examples, and step-by-step clarity. Give a full, deeply satisfying multi-paragraph explanation rather than a truncated summary.
+Avoid preambles like "Sure!" or "Certainly!". Jump straight into your comprehensive, informative explanation.
+CRITICAL SPOKEN TEXT & CLEAN WORDS DIRECTIVE:
+Your answers will be read aloud by an audio text-to-speech voice synthesizer.
+Write strictly in clear, natural spoken sentences and paragraphs.
+NEVER generate markdown tables (no '|' pipes or '|---|---|' dividers). If comparing or listing items, describe them in fluent spoken sentences.
+NEVER use markdown headers with '#' or '##'.
+NEVER use raw formatting characters like asterisks, dashed divider lines, backticks, bullet dashes, or ASCII symbols.
+Use words instead of symbols and formatting characters, so that only clean words are read aloud.
 Personality: ${personalityGuide}
 Language Requirement: ${langGuide}
 ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemPromptAddition : ''}`;
@@ -156,7 +166,7 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
             model: settings.groqModel || 'llama-3.1-8b-instant',
             messages,
             temperature: Math.min(settings.temperature || 0.6, 0.7),
-            max_tokens: Math.min(settings.maxTokens || 250, 300),
+            max_tokens: Math.max(settings.maxTokens || 2000, 2500),
             stream: true
           })
         });
@@ -173,7 +183,7 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
       }
     }
 
-    // 3. Built-in Instant Knowledge Engine (<5ms Latency fallback)
+    // 3. Built-in Comprehensive Knowledge Engine (Detailed, in-depth long answers)
     const replyText = this.getIntelligentInstantReply(userMessage, settings);
 
     if (onUpdate) onUpdate(replyText);
@@ -204,72 +214,89 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
 
     // Speed of Light
     if (q.includes('speed of light') || q.includes('light speed') || q.includes('prakash ki chaal') || q.includes('roshni ki raftar')) {
-      if (isHindi) return 'प्रकाश की गति निर्वात में लगभग 2 लाख 99 हज़ार 792 किलोमीटर प्रति सेकंड होती है!';
-      if (isHinglish) return 'Light ki speed vacuum me lagbhag 2,99,792 kilometers per second hoti hai!';
-      return 'The speed of light in a vacuum is approximately 299,792 kilometers per second, or about 186,282 miles per second.';
+      if (isHindi) {
+        return 'प्रकाश की गति निर्वात में बिल्कुल 299,792,458 मीटर प्रति सेकंड (लगभग 3 लाख किलोमीटर प्रति सेकंड) होती है। भौतिकी में इसे सार्वभौमिक स्थिरांक "c" द्वारा दर्शाया जाता है। अल्बर्ट आइंस्टीन के सापेक्षता के सिद्धांत (Theory of Special Relativity) के अनुसार, ब्रह्मांड में किसी भी द्रव्यमान वाले पदार्थ या सूचना के संचरण की यह अधिकतम सीमा है। जब प्रकाश हवा, कांच या पानी जैसे सघन माध्यमों से गुजरता है, तो अपवर्तनांक (Refractive Index) के कारण इसकी गति थोड़ी कम हो जाती है। उदाहरण के लिए, पानी में यह गति लगभग 225,000 किलोमीटर प्रति सेकंड हो जाती है।';
+      }
+      if (isHinglish) {
+        return 'Speed of light vacuum me exactly 299,792 kilometers per second hoti hai, jise round figure me hum 3 lakh kilometers per second kehte hain! Albert Einstein ki Theory of Relativity ke mutabik, universe me koi bhi object jisme mass ho, wo is speed se tezi se travel nahi kar sakta. Suraj ki roshni ko Dharti tak aane me lagbhag 8 minute aur 20 second ka waqt lagta hai.';
+      }
+      return 'The speed of light in a vacuum is exactly 299,792,458 meters per second (approximately 186,282 miles per second or roughly 300,000 kilometers per second). Denoted by the symbol "c" in Albert Einstein\'s famous equation E = mc², it represents the absolute cosmic speed limit for the transmission of all matter, energy, and information in the universe. When light travels through dense transparent media such as water, glass, or optical fiber, its effective velocity decreases proportionally according to the material\'s refractive index.';
     }
 
     // ESP32 Microcontroller
     if (q.includes('esp32') || q.includes('microcontroller') || q.includes('s3') || q.includes('esp 32')) {
-      if (isHindi) return 'ESP32 एक शक्तिशाली 32-बिट डुअल-कोर माइक्रोकंट्रोलर है जिसमें वाई-फाई और ब्लूटूथ दोनों इनबिल्ट हैं!';
-      if (isHinglish) return 'ESP32 ek powerful dual-core microcontroller hai jisme Wi-Fi aur Bluetooth integrated hota hai. Ye 240 MHz tak execute karta hai!';
-      return 'The ESP32 is a high-performance dual-core microcontroller with integrated Wi-Fi and Bluetooth, operating up to 240 megahertz for real-time IoT processing.';
+      if (isHindi) {
+        return 'ESP32 एस्प्रेसिफ सिस्टम्स द्वारा निर्मित एक अत्यंत शक्तिशाली और लोकप्रिय 32-बिट माइक्रोकंट्रोलर है। इसमें 240 मेगाहर्ट्ज पर चलने वाला Xtensa ड्यूल-कोर प्रोसेसर, 520 किलोबाइट SRAM, और बिल्ट-इन 2.4 गीगाहर्ट्ज वाई-फाई और ब्लूटूथ 4.2 / BLE शामिल हैं। यह I2S, I2C, SPI, UART, और कैपेसिटिव टच सेंसर्स जैसे समृद्ध परिधीय इंटरफेस का समर्थन करता है। Explore AI में हम इसके ड्यूल-कोर आर्किटेक्चर का उपयोग करते हैं: एक कोर वास्तविक समय में I2S डिजिटल माइक्रोफोन और स्पीकर ऑडियो को प्रोसेस करता है, जबकि दूसरा कोर वाई-फाई नेटवर्किंग और क्लाउड एलएलएम संचार संभालता है।';
+      }
+      if (isHinglish) {
+        return 'ESP32 Espressif Systems ka banaya hua ek flagship dual-core 32-bit microcontroller hai. Isme 240 MHz ki clock speed, integrated Wi-Fi aur Bluetooth LE milta hai. Explore AI Assistant me ye device I2S protocol ke zariye INMP441 digital microphone se clear 24-bit audio capture karta hai, aur MAX98357A amplifier ke zariye speaker par crisp audio play karta hai. Iska ek core audio processing sambhalta hai aur doosra core fast Wi-Fi communication execute karta hai.';
+      }
+      return 'The ESP32 is a versatile system-on-a-chip (SoC) microcontroller engineered by Espressif Systems. Powered by a dual-core 32-bit Xtensa LX6 microprocessor clocked up to 240 MHz, it integrates 520 KB of internal SRAM and dedicated hardware transceivers for both 2.4 GHz 802.11 b/g/n Wi-Fi and Bluetooth 4.2 / Bluetooth Low Energy. In our Explore AI architecture, the ESP32 utilizes high-speed I2S peripheral interfaces to continuously acquire uncompressed 24-bit digital audio from the INMP441 MEMS microphone, stream voice packets to our AI inference pipeline, and feed synthesized audio directly to the MAX98357A I2S Class-D amplifier.';
     }
 
     // Science Fact
     if (q.includes('science fact') || q.includes('fact') || q.includes('rochak tathya') || q.includes('tell me something interesting')) {
-      const facts = [
-        'A day on Venus is longer than a whole year on Venus! It takes 243 Earth days to rotate once, but only 225 days to orbit the Sun.',
-        'Sound travels about 4.3 times faster in water than it does in air, reaching approximately 1,480 meters per second.',
-        'Neutron stars are so dense that a single sugar-cube-sized amount of their material would weigh about a billion tons on Earth!',
-        'Hot water can freeze faster than cold water under certain conditions, a phenomenon known as the Mpemba effect.'
-      ];
-      if (isHindi) return 'शुक्र ग्रह (Venus) पर एक दिन उसके एक पूरे साल से भी बड़ा होता है!';
-      return facts[Math.floor(Math.random() * facts.length)];
+      if (isHindi) {
+        return 'विज्ञान का एक अद्भुत तथ्य: शुक्र ग्रह (Venus) पर एक दिन उसके पूरे एक वर्ष से भी अधिक लंबा होता है! शुक्र ग्रह को अपनी धुरी पर केवल एक चक्कर (रोटेशन) पूरा करने में पृथ्वी के लगभग 243 दिन लगते हैं, जबकि सूर्य के चारों ओर एक परिक्रमा (ऑर्बिट) पूरी करने में केवल 225 पृथ्वी दिन लगते हैं। इसके अतिरिक्त, शुक्र ग्रह हमारे सौरमंडल के अन्य ग्रहों के विपरीत दिशा (पूर्व से पश्चिम) में उल्टा घूमता है, जिसका अर्थ है कि वहाँ सूर्य पश्चिम में उगता है और पूर्व में अस्त होता है!';
+      }
+      return 'Here is a fascinating astrophysical fact: A single day on Venus is actually longer than an entire Venusian year! It takes Venus approximately 243 Earth days to complete just one single axial rotation, but only 225 Earth days to complete a full orbital revolution around the Sun. Furthermore, Venus possesses a retrograde rotation—meaning it spins clockwise on its axis in the reverse direction compared to most planets in our solar system, causing the Sun to rise in the west and set in the east!';
     }
 
     // Nikola Tesla
     if (q.includes('nikola tesla') || q.includes('tesla')) {
-      if (isHindi) return 'निकोला टेस्ला एक महान वैज्ञानिक और आविष्कारक थे जिन्होंने प्रत्यावर्ती धारा यानी एसी बिजली प्रणाली और रेडियो तकनीक का विकास किया।';
-      return 'Nikola Tesla was a visionary electrical engineer who designed the modern alternating current (AC) electricity supply system, induction motors, and wireless transmission principles.';
+      if (isHindi) {
+        return 'निकोला टेस्ला (1856-1943) एक दूरदर्शी सर्बियाई-अमेरिकी आविष्कारक, इलेक्ट्रिकल और मैकेनिकल इंजीनियर थे। उन्हें आधुनिक अल्टरनेटिंग करंट (AC) विद्युत आपूर्ति प्रणाली, इंडक्शन मोटर, टेस्ला कॉइल, और वायरलेस संचार के मौलिक सिद्धांतों के आविष्कार का जनक माना जाता है। थॉमस एडिसन के डायरेक्ट करंट (DC) के मुकाबले टेस्ला के एसी करंट ने लंबी दूरी तक न्यूनतम ऊर्जा हानि के साथ उच्च वोल्टेज पर बिजली का संचरण संभव बनाया, जिसने दुनिया भर में औद्योगिक क्रांति और आधुनिक बिजली ग्रिड को जन्म दिया।';
+      }
+      return 'Nikola Tesla (1856–1943) was a Serbian-American inventor, electrical engineer, and mechanical visionary whose breakthrough innovations formed the foundation of the modern electrical age. His crowning technical contribution was the development of polyphase Alternating Current (AC) electrical distribution systems and the AC induction motor, licensed to George Westinghouse during the historic "War of Currents". Tesla\'s designs proved that alternating current could be stepped up to high voltages via transformers for efficient, long-distance transmission with negligible thermal dissipation.';
     }
 
     // Microphone INMP441
     if (q.includes('inmp441') || q.includes('microphone') || q.includes('mic')) {
-      if (isHindi) return 'INMP441 एक डिजिटल ओमनी-डायरेक्शनल I2S माइक्रोफोन है जो 24-बिट उच्च गुणवत्ता वाली ऑडियो सीधे ESP32 में भेजता है।';
-      return 'The INMP441 is an omnidirectional MEMS digital microphone that streams high-resolution 24-bit audio directly to the ESP32 over the I2S bus.';
+      if (isHindi) {
+        return 'INMP441 एक अत्याधुनिक, उच्च प्रदर्शन वाला डिजिटल ओमनी-डायरेक्शनल MEMS माइक्रोफोन है। पारंपरिक एनालॉग माइक्रोफोन के विपरीत, INMP441 में माइक्रोफोन कैप्सूल, एनालॉग-टू-डिजिटल कनवर्टर (ADC), और I2S सीरियल डिजिटल इंटरफेस सीधे एक ही सिलिकॉन चिप पर एकीकृत होते हैं। यह 24-बिट डिजिटल सिग्नल सीधे ESP32 को प्रदान करता है, जिससे एनालॉग लाइनों में होने वाले इलेक्ट्रोमैग्नेटिक शोर और वाई-फाई ट्रांसमिशन से होने वाले आरएफ इंटरफेरेंस की समस्या पूरी तरह समाप्त हो जाती है। इसके कनेक्शन में SCK (बिट क्लॉक), WS (वर्ड सेलेक्ट), और SD (सीरियल डेटा) शामिल हैं।';
+      }
+      return 'The INMP441 is an omnidirectional MEMS (Micro-Electro-Mechanical Systems) digital microphone designed for high-fidelity embedded audio applications. Unlike analog microphones that require external preamplifiers and analog-to-digital converters, the INMP441 contains an integrated low-noise acoustic sensor, an ADC, and an industry-standard Inter-IC Sound (I2S) interface right on the die. It directly outputs a 24-bit PCM digital stream over three dedicated lines: Serial Clock (SCK), Word Select (WS/LRCK), and Serial Data (SD), making it completely immune to Wi-Fi RF noise and ambient electromagnetic hum.';
     }
 
     // MAX98357A Amplifier
     if (q.includes('max98357') || q.includes('amplifier') || q.includes('speaker') || q.includes('audio')) {
-      if (isHindi) return 'MAX98357A एक क्लास-डी ऑडियो एम्पलीफायर है जो I2S डिजिटल सिग्नल को स्पीकर के लिए शक्तिशाली ध्वनि में बदलता है।';
-      return 'The MAX98357A is an efficient Class-D audio amplifier that converts digital I2S audio streams directly into crisp sound for a 3-watt speaker.';
+      if (isHindi) {
+        return 'MAX98357A मैक्सिम इंटीग्रेटेड द्वारा निर्मित एक उच्च दक्षता वाला डिजिटल I2S इनपुट क्लास-डी ऑडियो एम्पलीफायर है। यह ESP32 से डिजिटल आई2एस ऑडियो डेटा प्राप्त करता है और बिना किसी बाहरी डीएसी (डिजिटल-टू-एनालॉग कनवर्टर) के सीधे 3.2 वॉट तक आउटपुट 4-ओम या 8-ओम स्पीकर को प्रदान करता है। इसकी दक्षता 92% तक होती है, जिससे यह बहुत कम बिजली खपत करता है और गर्म नहीं होता। इसके पिनों में DIN (डेटा इनपुट), BCLK (बिट क्लॉक), और LRC (लेफ्ट-राइट क्लॉक) शामिल हैं।';
+      }
+      return 'The MAX98357A is an integrated Class-D audio amplifier engineered with a digital Inter-IC Sound (I2S) input. Operating without requiring an external DAC, it accepts uncompressed digital PCM audio straight from the ESP32 and delivers up to 3.2 Watts of continuous audio power into a 4-ohm speaker at 92% efficiency. Its filterless spread-spectrum modulation minimizes electromagnetic radiation and eliminates bulky external LC filters, producing crystal-clear acoustic fidelity with minimal thermal dissipation.';
     }
 
     // Hardware Pins & Wiring
     if (q.includes('pin') || q.includes('wiring') || q.includes('hardware') || q.includes('connection')) {
       if (isHindi) {
-        return 'INMP441 माइक के लिए SCK GPIO 14, WS GPIO 15, और SD GPIO 32 हैं। MAX98357A एम्पलीफायर DIN GPIO 27 और BCLK GPIO 26 पर जुड़ा है।';
+        return 'Explore AI के मानक हार्डवेयर वायरिंग पिन: INMP441 डिजिटल माइक्रोफोन के लिए: SCK को GPIO 14, WS को GPIO 15, और SD को GPIO 32 से जोड़ें। MAX98357A क्लास-डी एम्पलीफायर के लिए: DIN को GPIO 27, BCLK को GPIO 26, और LRC को GPIO 25 से जोड़ें। 0.96 इंच I2C OLED डिस्प्ले के लिए: SDA को GPIO 21 और SCL को GPIO 22 से कनेक्ट करें। 2-चैनल या 4-चैनल रिले मॉड्यूल को GPIO 18 और GPIO 19 से नियंत्रित किया जाता है। सभी मॉड्यूलों का GND और VCC (3.3V / 5V) सामान्य ग्राउंड से जुड़ा होना चाहिए।';
       }
       if (isHinglish) {
-        return 'Explore AI me INMP441 Mic SCK GPIO 14, WS GPIO 15, SD GPIO 32 use karta hai. MAX98357A Amp DIN GPIO 27 aur BCLK GPIO 26 par connect hota hai!';
+        return 'Explore AI Assistant ke official hardware wiring pins: INMP441 Mic ke liye SCK = GPIO 14, WS = GPIO 15, SD = GPIO 32 connect hota hai. MAX98357A Amp ke liye DIN = GPIO 27, BCLK = GPIO 26, LRC = GPIO 25 judta hai. SSD1306 OLED Display ke liye SDA = GPIO 21 aur SCL = GPIO 22 standard I2C bus par hain. Relay channels GPIO 18 aur GPIO 19 par switch kiye jaate hain.';
       }
-      return 'Explore AI connects the INMP441 microphone to SCK (GPIO 14), WS (GPIO 15), and SD (GPIO 32). The MAX98357A amplifier connects to DIN (GPIO 27) and BCLK (GPIO 26).';
+      return 'Here is the comprehensive hardware pin configuration for the Explore AI smart assistant: For the INMP441 I2S MEMS Microphone, connect SCK (Bit Clock) to GPIO 14, WS (Word Select) to GPIO 15, and SD (Serial Data) to GPIO 32. For the MAX98357A I2S Class-D Amplifier, connect DIN (Data In) to GPIO 27, BCLK (Bit Clock) to GPIO 26, and LRC (Left/Right Clock) to GPIO 25. For the SSD1306 0.96-inch OLED display, connect SDA to GPIO 21 and SCL to GPIO 22. Relay channels are mapped to GPIO 18 and GPIO 19. All modules must share a stable common ground.';
     }
 
     // Identity / Greeting
     if (q.includes('who are you') || q.includes('what are you') || q.includes('namaste') || q.includes('hello') || q.includes('hi')) {
-      if (isHindi) return 'नमस्ते! मैं Explore AI Assistant हूँ। मैं आपके सवालों के तुरंत जवाब देने के लिए हमेशा तैयार हूँ।';
-      if (isHinglish) return 'Hello! Main Explore AI Assistant hoon, aapka real-time embedded voice companion!';
-      return 'Hello! I am Explore AI Assistant, your ultra-fast voice-enabled IoT companion powered by ESP32 hardware and Groq LLM!';
+      if (isHindi) {
+        return 'नमस्ते! मैं Explore AI Assistant हूँ, आपका उन्नत, बुद्धिमान और व्यक्तिगत वॉयस साथी। मुझे विशेष रूप से ESP32 और ESP32-S3 माइक्रोकंट्रोलर हार्डवेयर, आईओटी सेंसर्स, और आधुनिक कृत्रिम बुद्धिमत्ता के तालमेल से तैयार किया गया है। आप मुझसे विज्ञान, इलेक्ट्रॉनिक्स, कोडिंग, रोबोटिक्स, गणित, या किसी भी सामान्य ज्ञान के विषय पर गहन और विस्तृत प्रश्न पूछ सकते हैं, और मैं आपको संपूर्ण एवं ज्ञानवर्धक उत्तर प्रदान करूँगा!';
+      }
+      if (isHinglish) {
+        return 'Hello! Main Explore AI Assistant hoon, aapka advanced IoT voice companion. Mujhe ESP32 hardware, I2S digital audio, aur modern AI models ke saath design kiya gaya hai taaki aap electronics, coding, science aur general knowledge ke har sawal ka detailed aur comprehensive answer paa sakein. Poochiye, aap kya seekhna chahte hain!';
+      }
+      return 'Hello and welcome! I am the Explore AI Assistant, your advanced voice-enabled intelligent companion designed for ESP32 and ESP32-S3 IoT hardware. I am architected to provide thorough, in-depth, and deeply educational explanations across science, microcontroller engineering, electronics, computer programming, physics, and world knowledge. Please ask any question, and I will be delighted to provide a comprehensive, detailed breakdown for you!';
     }
 
     // Time & Date
     if (q.includes('time') || q.includes('samay') || q.includes('date') || q.includes('tareekh')) {
       const now = new Date();
-      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      if (isHindi) return `अभी समय ${timeStr} हुआ है।`;
-      return `The current local time is ${timeStr}.`;
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const dateStr = now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      if (isHindi) {
+        return `वर्तमान स्थानीय समय ठीक ${timeStr} है, और आज की तारीख ${dateStr} है। ESP32 हार्डवेयर में समय को वाई-फाई के माध्यम से NTP (नेटवर्क टाइम प्रोटोकॉल) सर्वर से मिलीसेकंड की सटीकता के साथ स्वचालित रूप से सिंक्रनाइज़ किया जाता है।`;
+      }
+      return `The current local time is ${timeStr}, on ${dateStr}. In our embedded ESP32 runtime, internal real-time clock registers are automatically synchronized against global NTP (Network Time Protocol) servers over Wi-Fi with sub-millisecond precision.`;
     }
 
     // Simple Math Evaluation
@@ -279,22 +306,26 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
       const op = mathMatch[2].toLowerCase();
       const b = parseFloat(mathMatch[3]);
       let res = 0;
-      if (op === '+' || op === 'plus') res = a + b;
-      else if (op === '-' || op === 'minus') res = a - b;
-      else if (op === '*' || op === 'x' || op === 'times' || op === 'multiplied by') res = a * b;
-      else if (op === '/' || op === 'divided by') res = b !== 0 ? a / b : 0;
-      return `The result of ${a} ${op} ${b} is ${res}.`;
+      let opName = 'added to';
+      if (op === '+' || op === 'plus') { res = a + b; opName = 'plus'; }
+      else if (op === '-' || op === 'minus') { res = a - b; opName = 'minus'; }
+      else if (op === '*' || op === 'x' || op === 'times' || op === 'multiplied by') { res = a * b; opName = 'multiplied by'; }
+      else if (op === '/' || op === 'divided by') {
+        res = b !== 0 ? a / b : 0;
+        opName = 'divided by';
+      }
+      return `The mathematical calculation of ${a} ${opName} ${b} equals precisely ${res}. In arithmetic terms, performing this operation yields a final value of ${res}. If you need further scientific calculations, algebraic formulas, or unit conversions, feel free to ask!`;
     }
 
-    // Default fast conversational answer
-    const cleanedTopic = userMessage.replace(/^[a-z\s]+explorer,?\s*/i, '').slice(0, 50).trim();
+    // Default rich comprehensive answer
+    const cleanedTopic = userMessage.replace(/^[a-z\s]+explorer,?\s*/i, '').slice(0, 60).trim();
     if (isHindi) {
-      return `मैंने आपका प्रश्न सुन लिया है। "${cleanedTopic}" के बारे में मुझे ज्ञात है कि यह विज्ञान और प्रौद्योगिकी का एक महत्वपूर्ण विषय है।`;
+      return `आपके प्रश्न "${cleanedTopic}" के संबंध में: यह विषय विज्ञान और तकनीकी अन्वेषण के दृष्टिकोण से अत्यंत महत्वपूर्ण है। इस अवधारणा को समझने के लिए हमें इसके मूल सिद्धांतों, इसके कार्यप्रणाली के घटकों और इसके व्यावहारिक अनुप्रयोगों का अवलोकन करना होता है। आप जिस भी विशिष्ट पहलू पर अधिक गहराई से जानकारी प्राप्त करना चाहते हैं, कृपया मुझे बताएं—मैं आपको प्रत्येक चरण का विस्तृत और संपूर्ण स्पष्टीकरण दूंगा।`;
     }
     if (isHinglish) {
-      return `Maine aapka question sun liya hai: "${cleanedTopic}". Explore AI aapko real-time voice response provide kar raha hai!`;
+      return `Aapke question "${cleanedTopic}" ke baare me: Ye topic technology aur science ke context me kaafi mahatvapurna hai. Iske underlying principles, functioning mechanism, aur practical hardware applications ko samajhna bahut zaroori hai. Aap iske kisi bhi specific part par aur sawaal pooch sakte hain, aur main aapko poori detail ke saath samjhaunga!`;
     }
-    return `Regarding "${cleanedTopic}": Explore AI Assistant has processed your question. You can ask anything about electronics, microcontrollers, physics, coding, or science, and I will explain it for you!`;
+    return `Regarding your inquiry on "${cleanedTopic}": This concept involves fundamental principles spanning scientific theory, architectural design, and practical real-world execution. To understand it thoroughly, one must examine the core mechanisms that govern its operation, the individual components that drive its behavior, and how these factors interact under varying conditions. Please let me know which specific dimension you would like to delve deeper into, and I will gladly provide an exhaustive, step-by-step breakdown!`;
   }
 }
 

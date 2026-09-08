@@ -24,6 +24,7 @@ export type FaceExpression =
   | 'HAPPY';
 
 export type HardwareVariant = 
+  | 'ESP32-DEVKIT-V1-CH340'
   | 'ESP32-S3' 
   | 'ESP32-WROOM' 
   | 'ESP32-C3' 
@@ -137,6 +138,7 @@ export type FlasherState =
   | 'connected'
   | 'syncing'
   | 'erasing'
+  | 'reading'
   | 'flashing'
   | 'verifying'
   | 'completed'
@@ -148,6 +150,18 @@ export interface FlashProgress {
   totalBytes: number;
   speedKbps: number;
   currentFile: string;
+}
+
+export interface UploadedFirmwareFile {
+  id: string;
+  name: string;
+  size: number;
+  data: Uint8Array;
+  address: number;
+  addressHex: string;
+  isValidBin: boolean;
+  magicByte?: number;
+  detectedType: 'app' | 'merged' | 'bootloader' | 'partitions' | 'boot_app0' | 'custom';
 }
 
 export type LLMProvider = 'groq' | 'gemini';

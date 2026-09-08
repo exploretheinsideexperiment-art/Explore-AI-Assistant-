@@ -20,7 +20,24 @@ import { PinConfigurator } from './components/PinConfigurator';
 import { UsbFlasherView } from './components/UsbFlasherView';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('console');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hash = window.location.hash.replace('#', '');
+      const validTabs: ActiveTab[] = ['console', 'settings', 'device', 'hardware', 'knowledge', 'firmware', 'pinout', 'usbflash', 'portal'];
+      if (validTabs.includes(hash as ActiveTab)) {
+        return hash as ActiveTab;
+      }
+    }
+    return 'usbflash';
+  });
+
+  // Keep window.location.hash in sync with activeTab
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.location.hash = activeTab;
+    }
+  }, [activeTab]);
+
   const [displayState, setDisplayState] = useState<DisplayState>('READY');
 
   // Custom hardware profile state with local persistence

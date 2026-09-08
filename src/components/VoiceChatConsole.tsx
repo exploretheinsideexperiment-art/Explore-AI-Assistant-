@@ -22,13 +22,13 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
     {
       id: 'init-1',
       role: 'assistant',
-      content: 'Hello! I am Explore AI Assistant. Continuous voice is active! Say "Hey Explorer", "Hi Explorer", or "Hello Explorer" followed by your question, and I will answer you immediately!',
+      content: 'Hello! I am Explore AI Assistant. Click the microphone button or type below to ask any question about science, ESP32, electronics, physics, or coding, and I will give you a detailed, comprehensive answer!',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       modelUsed: settings.groqModel || 'llama-3.3-70b-versatile'
     }
   ]);
   const [input, setInput] = useState('');
-  const [isContinuousMode, setIsContinuousMode] = useState<boolean>(true);
+  const [isContinuousMode, setIsContinuousMode] = useState<boolean>(false);
   const [isMicCapturing, setIsMicCapturing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -202,6 +202,8 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
           speechEndTimerRef.current = setTimeout(() => {
             setIsListeningToFullQuestion(false);
             wakeWordAwakenedRef.current = false;
+            // Stop speech recognition immediately when question is formulated
+            safeStopRecognition();
             onOledStateChange('PROCESSING');
             const finalQuery = currentSpeechCandidateRef.current || queryCandidate;
             currentSpeechCandidateRef.current = '';
@@ -212,15 +214,7 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
 
       recognition.onend = () => {
         isRecognitionActiveRef.current = false;
-        // Keep speech recognition continuously active in the background
-        if (isContinuousModeRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
-          if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
-          restartTimeoutRef.current = setTimeout(() => {
-            if (isContinuousModeRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
-              safeStartRecognition();
-            }
-          }, 150);
-        }
+        setIsMicCapturing(false);
       };
 
       recognition.onerror = (e: any) => {
@@ -228,22 +222,10 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
           console.warn('[Speech] Recognition event:', e.error);
         }
         isRecognitionActiveRef.current = false;
-        if (isContinuousModeRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
-          if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
-          restartTimeoutRef.current = setTimeout(() => {
-            if (isContinuousModeRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
-              safeStartRecognition();
-            }
-          }, 250);
-        }
+        setIsMicCapturing(false);
       };
 
       recognitionRef.current = recognition;
-
-      // Start continuous listening immediately
-      if (isContinuousModeRef.current) {
-        safeStartRecognition();
-      }
     }
 
     return () => {
@@ -261,7 +243,7 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
     }
 
     if (next) {
-      triggerWakeNotice('⚡ Continuous Voice Activated! Say "Hey Explorer [question]" anytime');
+      triggerWakeNotice('⚡ Continuous Voice Enabled: Mic is active');
       wakeWordService.playWakeChime();
       ttsService.stop();
       setIsSpeaking(false);
@@ -270,7 +252,7 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
       }, 150);
     } else {
       safeStopRecognition();
-      triggerWakeNotice('Continuous Voice Paused');
+      triggerWakeNotice('Continuous Voice Disabled: Mic will turn on only when you click it');
       onOledStateChange('READY');
     }
   };
@@ -281,21 +263,27 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
       return;
     }
 
-    if (isContinuousMode) {
-      // Pause continuous listening
-      setIsContinuousMode(false);
-      isContinuousModeRef.current = false;
+    if (isMicCapturing || isRecognitionActiveRef.current) {
+      // User clicked mic to finish question or turn off
       safeStopRecognition();
-      triggerWakeNotice('Microphone Paused (Click to resume)');
+      setIsListeningToFullQuestion(false);
+      const targetQuery = currentSpeechCandidateRef.current || input;
+      if (targetQuery.trim().length >= 2) {
+        currentSpeechCandidateRef.current = '';
+        handleSendRef.current(undefined, targetQuery.trim());
+      } else {
+        triggerWakeNotice('Microphone turned off');
+        onOledStateChange('READY');
+      }
     } else {
-      // Resume continuous listening
-      setIsContinuousMode(true);
-      isContinuousModeRef.current = true;
+      // Turn microphone on on-demand for asking a question
       ttsService.stop();
       setIsSpeaking(false);
       wakeWordService.playWakeChime();
+      triggerWakeNotice('🎤 Microphone ON — Please speak your question now...');
+      setInput('');
+      currentSpeechCandidateRef.current = '';
       safeStartRecognition();
-      triggerWakeNotice('⚡ Microphone Active — Say "Hey Explorer [question]" anytime');
     }
   };
 
@@ -303,10 +291,6 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
     ttsService.stop();
     setIsSpeaking(false);
     wakeWordAwakenedRef.current = true;
-    if (!isContinuousModeRef.current) {
-      setIsContinuousMode(true);
-      isContinuousModeRef.current = true;
-    }
     safeStartRecognition();
     wakeWordService.playWakeChime();
     triggerWakeNotice(`⚡ "${phrase}" activated! Ask your question now...`);
@@ -359,14 +343,7 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
         setIsSpeaking(false);
         isSpeakingRef.current = false;
         onOledStateChange('READY');
-        // Speech ended: assistant is ready for the user's next sentence immediately
-        if (isContinuousModeRef.current) {
-          setTimeout(() => {
-            if (isContinuousModeRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
-              safeStartRecognition();
-            }
-          }, 150);
-        }
+        // Microphone remains safely OFF after answering question (only turns on when user clicks to ask)
       });
 
       const response = await aiService.streamResponse(
@@ -442,9 +419,6 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
       console.error('Failed to get response:', err);
       onOledStateChange('ERROR');
       setTimeout(() => onOledStateChange('READY'), 2000);
-      if (isContinuousModeRef.current) {
-        setTimeout(() => safeStartRecognition(), 1000);
-      }
     } finally {
       setIsProcessing(false);
       isProcessingRef.current = false;
@@ -472,9 +446,6 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
       () => {
         setIsSpeaking(false);
         onOledStateChange('READY');
-        if (isContinuousModeRef.current) {
-          safeStartRecognition();
-        }
       }
     );
   };
@@ -549,23 +520,23 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
           </div>
         </div>
 
-        {/* Dynamic Status: Continuous Listening vs Speaking vs Paused */}
+        {/* Dynamic Status: Speaking vs Listening vs Ready */}
         <div className="flex items-center gap-2">
           {isSpeaking ? (
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-xs font-medium animate-pulse">
               <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Speaking Response...</span>
+              <span>Speaking Answer...</span>
             </div>
-          ) : isContinuousMode ? (
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold shadow-sm shadow-emerald-500/20">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-              <Mic className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Continuous Listening (Active)</span>
+          ) : isMicCapturing ? (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-bold shadow-sm shadow-rose-500/20 animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping"></span>
+              <Mic className="w-3.5 h-3.5 text-rose-400" />
+              <span>Microphone ON — Listening...</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-850 border border-slate-750 text-slate-400 text-xs font-medium">
               <MicOff className="w-3.5 h-3.5 text-slate-500" />
-              <span>Voice Paused (Click to Resume)</span>
+              <span>Mic Idle (Click to Ask)</span>
             </div>
           )}
         </div>
@@ -835,14 +806,25 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
         <button
           type="button"
           onClick={toggleMic}
-          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition ${
-            isContinuousMode
-              ? 'bg-emerald-500 text-slate-950 font-bold shadow-lg shadow-emerald-500/30 animate-pulse'
-              : 'bg-slate-850 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700'
+          className={`h-10 px-3.5 rounded-xl flex items-center gap-2 shrink-0 transition font-medium text-xs ${
+            isMicCapturing
+              ? 'bg-rose-500 text-white font-bold shadow-lg shadow-rose-500/30 animate-pulse'
+              : 'bg-slate-850 hover:bg-slate-750 text-slate-200 hover:text-white border border-slate-700'
           }`}
-          title={isContinuousMode ? 'Continuous Listening is ON — Click to pause' : 'Continuous Listening is PAUSED — Click to activate'}
+          title={isMicCapturing ? 'Microphone is ON — Click to finish & answer' : 'Click to turn ON microphone and ask your question'}
         >
-          {isContinuousMode ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+          {isMicCapturing ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
+              <Mic className="w-4 h-4 text-white" />
+              <span className="hidden sm:inline">Listening...</span>
+            </>
+          ) : (
+            <>
+              <Mic className="w-4 h-4 text-cyan-400" />
+              <span className="hidden sm:inline">Ask with Voice</span>
+            </>
+          )}
         </button>
 
         <input
@@ -850,9 +832,9 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={
-            isContinuousMode
-              ? 'Continuous voice listening active: Say "Hey Explorer [question]" or type...'
-              : 'Continuous voice paused. Click mic or type your question...'
+            isMicCapturing
+              ? '🎤 Listening to your voice... Speak your question now'
+              : 'Click "Ask with Voice" or type your question here...'
           }
           className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400"
         />

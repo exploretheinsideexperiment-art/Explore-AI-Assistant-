@@ -249,7 +249,7 @@ export const PinConfigurator: React.FC<PinConfiguratorProps> = ({
           <label className="text-xs font-semibold text-slate-300 block mb-2.5">
             1. Select ESP32 Microcontroller Module:
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2.5">
             {(Object.keys(HARDWARE_BOARDS) as HardwareVariant[]).map((v) => {
               const spec = HARDWARE_BOARDS[v];
               const isSelected = profile.variant === v;
