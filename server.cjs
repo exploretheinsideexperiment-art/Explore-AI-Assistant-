@@ -1,0 +1,212 @@
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+
+// server.ts
+var import_express = __toESM(require("express"), 1);
+var import_path = __toESM(require("path"), 1);
+var import_genai = require("@google/genai");
+var import_vite = require("vite");
+var app = (0, import_express.default)();
+var PORT = 3e3;
+app.use(import_express.default.json());
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    hasGemini: !!process.env.GEMINI_API_KEY,
+    hasGroq: !!process.env.GROQ_API_KEY
+  });
+});
+function buildSystemPrompt(settings) {
+  const personalityMap = {
+    educational: "You are an inspiring mentor and educator who explains complex technical concepts simply with real-world analogies.",
+    friendly: "You are warm, empathetic, approachable, and encouraging like a helpful friend.",
+    professional: "You are concise, direct, objective, and structured.",
+    technical: "You are an expert embedded systems and software engineer providing precise architectural details, pinouts, and code snippets.",
+    general: "You are a versatile, polite, and helpful personal assistant."
+  };
+  const languageInstruction = {
+    "hi-IN": "Respond strictly in clear, natural Hindi (Devanagari script or clean formal Hindi).",
+    "hinglish": "Respond in natural Hinglish (conversational Hindi written in Roman English alphabet with common English technical terms).",
+    "bho-IN": "Respond warmly in authentic Bhojpuri language.",
+    "bn-IN": "Respond in natural Bengali (Bangla script).",
+    "mr-IN": "Respond in natural Marathi (\u092E\u0930\u093E\u0920\u0940).",
+    "ta-IN": "Respond in natural Tamil (\u0BA4\u0BAE\u0BBF\u0BB4\u0BCD).",
+    "te-IN": "Respond in natural Telugu (\u0C24\u0C46\u0C32\u0C41\u0C17\u0C41).",
+    "gu-IN": "Respond in natural Gujarati (\u0A97\u0AC1\u0A9C\u0AB0\u0ABE\u0AA4\u0AC0).",
+    "kn-IN": "Respond in natural Kannada (\u0C95\u0CA8\u0CCD\u0CA8\u0CA1).",
+    "ml-IN": "Respond in natural Malayalam (\u0D2E\u0D32\u0D2F\u0D3E\u0D33\u0D02).",
+    "pa-IN": "Respond in natural Punjabi (\u0A2A\u0A70\u0A1C\u0A3E\u0A2C\u0A40).",
+    "ur-PK": "Respond in natural Urdu (\u0627\u0631\u062F\u0648).",
+    "en-IN": "Respond in clear, articulate Indian English with thorough, comprehensive, and detailed explanations."
+  };
+  const lang = settings?.language || "en-US";
+  const langGuide = languageInstruction[lang] || "Respond in clear, natural English.";
+  const personalityGuide = personalityMap[settings?.personality] || personalityMap.educational;
+  return `You are Explore AI Assistant, an advanced, highly knowledgeable IoT AI voice assistant for ESP32 hardware and curious minds.
+Mission: Provide rich, deeply educational, accurate, and comprehensive explanations across science, technology, electronics, microcontrollers, programming, physics, history, mathematics, and general knowledge.
+CRITICAL ANSWER DEPTH & LENGTH DIRECTIVE:
+When the user asks ANY question, DO NOT give short, brief, or shallow answers. ALWAYS provide comprehensive, detailed, informative, and long answers!
+The user has strictly requested long answers: thoroughly explain underlying concepts, architectural mechanisms, step-by-step principles, real-world examples, and clear technical nuance.
+Provide a complete, multi-paragraph, deeply satisfying explanation that thoroughly educates the user rather than a 1-2 sentence truncated summary.
+Avoid unnecessary filler preambles like "Sure!" or "Certainly!". Jump straight into your comprehensive, informative explanation.
+CRITICAL SPOKEN TEXT & CLEAN WORDS DIRECTIVE:
+Your answers will be read aloud by an audio text-to-speech voice synthesizer.
+Write strictly in clear, natural spoken sentences and paragraphs.
+NEVER generate markdown tables (no pipes or divider lines). If comparing or listing items, describe them in fluent spoken sentences.
+NEVER use markdown headers with hashes.
+NEVER use raw formatting characters like asterisks, dashed divider lines, backticks, bullet dashes, or ASCII symbols.
+Use words instead of symbols and formatting characters, so that only clean words are read aloud.
+Personality: ${personalityGuide}
+Language Requirement: ${langGuide}
+${settings?.systemPromptAddition ? "Additional instructions: " + settings.systemPromptAddition : ""}`;
+}
+app.post("/api/chat", async (req, res) => {
+  const { query, history = [], settings = {} } = req.body;
+  if (!query || typeof query !== "string" || !query.trim()) {
+    return res.status(400).json({ error: "Query is required" });
+  }
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  const systemPrompt = buildSystemPrompt(settings);
+  const groqApiKey = settings.groqApiKey || process.env.GROQ_API_KEY;
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+  if (groqApiKey && groqApiKey.trim().length > 5) {
+    try {
+      const messages = [
+        { role: "system", content: systemPrompt },
+        ...history.slice(-4).map((m) => ({ role: m.role, content: m.content })),
+        { role: "user", content: query.trim() }
+      ];
+      const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${groqApiKey.trim()}`
+        },
+        body: JSON.stringify({
+          model: settings.groqModel || "llama-3.1-8b-instant",
+          messages,
+          temperature: Math.min(settings.temperature || 0.6, 0.7),
+          max_tokens: Math.max(settings.maxTokens || 2e3, 2500),
+          stream: true
+        })
+      });
+      if (groqRes.ok && groqRes.body) {
+        const reader = groqRes.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data:")) continue;
+            const dataStr = trimmed.replace(/^data:\s*/, "");
+            if (dataStr === "[DONE]") {
+              res.write("data: [DONE]\n\n");
+              return res.end();
+            }
+            try {
+              const parsed = JSON.parse(dataStr);
+              const delta = parsed.choices?.[0]?.delta?.content || "";
+              if (delta) {
+                res.write(`data: ${JSON.stringify({ text: delta })}
+
+`);
+              }
+            } catch (e) {
+            }
+          }
+        }
+        res.write("data: [DONE]\n\n");
+        return res.end();
+      }
+    } catch (groqErr) {
+      console.warn("[Server] Groq request failed, falling back to Gemini:", groqErr);
+    }
+  }
+  if (geminiApiKey) {
+    try {
+      const ai = new import_genai.GoogleGenAI({ apiKey: geminiApiKey });
+      const contents = [
+        ...history.slice(-4).map((m) => ({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.content }]
+        })),
+        {
+          role: "user",
+          parts: [{ text: query.trim() }]
+        }
+      ];
+      const responseStream = await ai.models.generateContentStream({
+        model: "gemini-3.8-flash",
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: 0.6,
+          maxOutputTokens: Math.max(settings.maxTokens || 2e3, 2500)
+        }
+      });
+      for await (const chunk of responseStream) {
+        const text = chunk.text;
+        if (text) {
+          res.write(`data: ${JSON.stringify({ text })}
+
+`);
+        }
+      }
+      res.write("data: [DONE]\n\n");
+      return res.end();
+    } catch (geminiErr) {
+      console.error("[Server] Gemini request failed:", geminiErr);
+    }
+  }
+  const fallback = `Explore AI received: "${query.trim()}". The IoT audio assistant is active and operational.`;
+  res.write(`data: ${JSON.stringify({ text: fallback })}
+
+`);
+  res.write("data: [DONE]\n\n");
+  res.end();
+});
+async function startServer() {
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await (0, import_vite.createServer)({
+      server: { middlewareMode: true },
+      appType: "spa"
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = import_path.default.join(process.cwd(), "dist");
+    app.use(import_express.default.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(import_path.default.join(distPath, "index.html"));
+    });
+  }
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[Server] Explore AI Assistant running on http://0.0.0.0:${PORT}`);
+  });
+}
+startServer();
+//# sourceMappingURL=server.cjs.map
