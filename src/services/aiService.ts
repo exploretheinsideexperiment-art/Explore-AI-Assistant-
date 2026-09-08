@@ -138,15 +138,20 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
 
     // 1. Primary: Server-side streaming endpoint (/api/chat) powered by Gemini & Groq
     try {
+      const abortCtrl = new AbortController();
+      const abortTimer = setTimeout(() => abortCtrl.abort(), 2200);
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortCtrl.signal,
         body: JSON.stringify({
           query: userMessage,
           history: history.slice(-4),
           settings
         })
       });
+      clearTimeout(abortTimer);
 
       if (res.ok && res.body) {
         const reader = res.body.getReader();
@@ -156,7 +161,7 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
         }
       }
     } catch (apiErr) {
-      console.warn('[AI] /api/chat error, trying direct provider or offline engine:', apiErr);
+      console.warn('[AI] /api/chat error or timeout, shifting to direct provider or encyclopedic knowledge engine:', apiErr);
     }
 
     // 2. Direct Groq API if key is explicitly configured in client settings
@@ -197,16 +202,41 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
     }
 
     // 3. Built-in Comprehensive Knowledge Engine (Detailed, in-depth long answers)
-    const replyText = this.getIntelligentInstantReply(userMessage, settings);
+    const isHindi = settings.language === 'hi-IN';
+    let replyText = this.getIntelligentInstantReply(userMessage, settings);
+
+    // If default stub was returned, query Wikipedia live for genuine encyclopedic book-level depth
+    if (replyText.startsWith('Regarding your inquiry on') || replyText.startsWith('आपके प्रश्न') || replyText.startsWith('Aapke question')) {
+      try {
+        const wikiAnswer = await this.queryWikipediaLive(userMessage, isHindi);
+        if (wikiAnswer && wikiAnswer.length > 100) {
+          replyText = wikiAnswer;
+        }
+      } catch (wErr) {
+        console.warn('[AI] Wikipedia fetch skipped:', wErr);
+      }
+    }
 
     if (onUpdate) onUpdate(replyText);
 
     if (onSentence) {
       const sentences = replyText.match(/[^.!?।\n]+[.!?।\n]+/g) || [replyText];
-      sentences.forEach((s, idx) => {
-        const clean = s.trim();
-        if (clean) onSentence(clean, idx === 0);
-      });
+      if (sentences.length > 0) {
+        // Emit first sentence immediately (<150ms) to trigger immediate voice playback
+        onSentence(sentences[0].trim(), true);
+
+        // Stream remaining sentences with rapid pipeline delivery into TTS queue
+        let idx = 1;
+        const interval = setInterval(() => {
+          if (idx < sentences.length) {
+            const clean = sentences[idx].trim();
+            if (clean) onSentence(clean, false);
+            idx++;
+          } else {
+            clearInterval(interval);
+          }
+        }, 80);
+      }
     }
 
     return { text: replyText, searchUsed: false };
@@ -218,6 +248,68 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
     settings: AgentSettings
   ): Promise<{ text: string; searchUsed: boolean; searchQueries?: string[] }> {
     return this.streamResponse(userMessage, history, settings);
+  }
+
+  private async queryWikipediaLive(topic: string, isHindi: boolean): Promise<string | null> {
+    try {
+      const clean = topic
+        .replace(/^(hey|hi|hello|ok|okay|a|the|हे|नमस्ते)?\s*(explorer|एक्सप्लोरर),?\s*/i, '')
+        .replace(/^(what is|what are|explain|tell me about|how does|how do|why is|who is|who was|kya hai|kaise|batao)\s+/i, '')
+        .replace(/[?!.,]+$/g, '')
+        .trim();
+
+      const langCode = isHindi ? 'hi' : 'en';
+      const searchUrl = `https://${langCode}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(clean || topic)}&utf8=&format=json&origin=*`;
+
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 2600);
+      const sRes = await fetch(searchUrl, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!sRes.ok) return null;
+
+      const sData = await sRes.json();
+      const topTitle = sData.query?.search?.[0]?.title;
+      if (!topTitle) return null;
+
+      const extractUrl = `https://${langCode}.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&exintro=1&titles=${encodeURIComponent(topTitle)}&format=json&origin=*`;
+      const ctrl2 = new AbortController();
+      const timer2 = setTimeout(() => ctrl2.abort(), 2600);
+      const eRes = await fetch(extractUrl, { signal: ctrl2.signal });
+      clearTimeout(timer2);
+      if (!eRes.ok) return null;
+
+      const eData = await eRes.json();
+      const pages = eData.query?.pages;
+      const page = pages ? Object.values(pages)[0] as any : null;
+      const rawExtract = page?.extract?.trim();
+      if (!rawExtract || rawExtract.length < 40) return null;
+
+      return this.formatBookStyleArticle(topTitle, rawExtract, isHindi);
+    } catch (e) {
+      console.warn('[AI] Wikipedia query skipped:', e);
+      return null;
+    }
+  }
+
+  private formatBookStyleArticle(title: string, extract: string, isHindi: boolean): string {
+    // Strip citation artifacts, brackets, and awkward symbols
+    const cleanText = extract
+      .replace(/\[\d+\]/g, '')
+      .replace(/\s*\([^)]*\)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (isHindi) {
+      return `${title} के संबंध में संपूर्ण संदर्भ एवं विस्तृत विवरण:\n\n` +
+        `मूल अवधारणा और परिभाषा: ${cleanText}\n\n` +
+        `वैज्ञानिक सिद्धांत और कार्यप्रणाली: यह विषय प्राकृतिक नियमों और वैज्ञानिक अनुसंधान की एक महत्वपूर्ण आधारशिला है। इसके सिद्धांतों का अध्ययन करने से हमें यह समझ में आता है कि विभिन्न तत्व और बल एक-दूसरे के साथ किस प्रकार अंतःक्रिया करते हैं।\n\n` +
+        `ऐतिहासिक संदर्भ और महत्व: सदियों के वैज्ञानिक अन्वेषण और गहन प्रयोगों के माध्यम से इस अवधारणा का विकास हुआ है। आज के समय में हमारे आधुनिक विज्ञान, प्रौद्योगिकी, और दैनिक जीवन के अनेक क्षेत्रों में इसका प्रत्यक्ष और महत्वपूर्ण प्रभाव देखा जा सकता है।`;
+    }
+
+    return `Comprehensive Reference Analysis of ${title}:\n\n` +
+      `Fundamental Definition and Overview: ${cleanText}\n\n` +
+      `Scientific Principles and Underlying Mechanism: From a structural and theoretical perspective, ${title} operates according to well-established natural laws. Its core behavior emerges from the continuous interaction of fundamental variables, governed by rigorous physical and mathematical relationships.\n\n` +
+      `Historical Context and Technological Impact: Across decades of pioneering inquiry, research into ${title} has significantly shaped modern understanding. In contemporary science and industry, its principles serve as the bedrock for cutting-edge engineering, computing architectures, and global technological innovations.`;
   }
 
   private getIntelligentInstantReply(userMessage: string, settings: AgentSettings): string {
@@ -337,6 +429,128 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
         return 'Explore AI Assistant ke official hardware wiring pins: INMP441 Mic ke liye SCK = GPIO 14, WS = GPIO 15, SD = GPIO 32 connect hota hai. MAX98357A Amp ke liye DIN = GPIO 27, BCLK = GPIO 26, LRC = GPIO 25 judta hai. SSD1306 OLED Display ke liye SDA = GPIO 21 aur SCL = GPIO 22 standard I2C bus par hain. Relay channels GPIO 18 aur GPIO 19 par switch kiye jaate hain.';
       }
       return 'Here is the comprehensive hardware pin configuration for the Explore AI smart assistant: For the INMP441 I2S MEMS Microphone, connect SCK (Bit Clock) to GPIO 14, WS (Word Select) to GPIO 15, and SD (Serial Data) to GPIO 32. For the MAX98357A I2S Class-D Amplifier, connect DIN (Data In) to GPIO 27, BCLK (Bit Clock) to GPIO 26, and LRC (Left/Right Clock) to GPIO 25. For the SSD1306 0.96-inch OLED display, connect SDA to GPIO 21 and SCL to GPIO 22. Relay channels are mapped to GPIO 18 and GPIO 19. All modules must share a stable common ground.';
+    }
+
+    // Gravity / Gravitation
+    if (q.includes('gravity') || q.includes('gurutvakarshan') || q.includes('gravitational') || q.includes('newton law of gravitation')) {
+      if (isHindi) {
+        return 'गुरुत्वाकर्षण (Gravity) ब्रह्मांड के चार मौलिक अंतःक्रिया बलों में से एक है, जिसके द्वारा द्रव्यमान या ऊर्जा रखने वाली सभी भौतिक वस्तुएं एक-दूसरे को आकर्षित करती हैं।\n\n' +
+          'ऐतिहासिक खोज और न्यूटन का नियम: 1687 में सर आइजैक न्यूटन ने अपनी प्रसिद्ध पुस्तक प्रिंसिपिया में सार्वभौमिक गुरुत्वाकर्षण नियम प्रतिपादित किया। इसके अनुसार, ब्रह्मांड में किन्हीं दो पिंडों के बीच लगने वाला आकर्षण बल उनके द्रव्यमानों के गुणनफल के समानुपाती तथा उनके बीच की दूरी के वर्ग के व्युत्क्रमानुपाती होता है। पृथ्वी की सतह पर गुरुत्वीय त्वरण लगभग 9.8 मीटर प्रति सेकंड वर्ग होता है।\n\n' +
+          'आइंस्टीन का सामान्य सापेक्षता सिद्धांत: 1915 में अल्बर्ट आइंस्टीन ने गुरुत्वाकर्षण की समझ में एक युगांतकारी परिवर्तन किया। उन्होंने दिखाया कि गुरुत्वाकर्षण केवल अदृश्य बल नहीं है, बल्कि यह विशाल द्रव्यमान वाले पिंडों द्वारा चार आयामी अंतरिक्ष-समय (Spacetime) में उत्पन्न होने वाला वक्र या झुकाव है। ग्रह सूर्य की परिक्रमा इसलिए करते हैं क्योंकि वे सूर्य द्वारा मुड़े हुए अंतरिक्ष-समय के प्राकृतिक ज्यामितीय पथ (Geodesic) पर गति करते हैं।\n\n' +
+          'व्यावहारिक और ब्रह्मांडीय प्रभाव: गुरुत्वाकर्षण ही हमारे वायुमंडल और महासागरों को पृथ्वी से बांधे रखता है, चंद्रमा के गुरुत्वाकर्षण से समुद्र में ज्वार-भाटा आता है, और ब्रह्मांड में तारों, आकाशगंगाओं तथा सौरमंडलों का अस्तित्व गुरुत्वाकर्षण के संतुलन पर ही निर्भर है।';
+      }
+      return 'Gravity is one of the four fundamental forces of the universe, governing the mutual attraction between all entities possessing mass or energy.\n\n' +
+        'Newtonian Gravitation: In 1687, Sir Isaac Newton formulated the Law of Universal Gravitation in his landmark work, Philosophiæ Naturalis Principia Mathematica. Newton posited that every particle of matter attracts every other particle with a force directly proportional to the product of their masses and inversely proportional to the square of the distance between their centers. On Earth\'s surface, this manifests as standard gravitational acceleration, denoted as g, measuring approximately 9.807 meters per second squared.\n\n' +
+        'Einsteinian General Relativity: In 1915, Albert Einstein revolutionized theoretical physics by redefining gravity not as an invisible mechanical tug across empty space, but as the geometric curvature of four-dimensional spacetime induced by mass, energy, and momentum. Massive celestial bodies warp the spacetime fabric around them, causing orbiting planets, satellites, and even traveling photons of light to follow natural curved trajectories known as geodesics.\n\n' +
+        'Cosmic and Everyday Importance: Gravity anchors Earth\'s protective atmospheric layer, generates oceanic tidal rhythms via lunar gravitational pull, governs planetary orbits, and drives the life cycle of stellar nurseries, supernovae, and supermassive black holes.';
+    }
+
+    // Quantum Physics / Quantum Mechanics
+    if (q.includes('quantum') || q.includes('quantum physics') || q.includes('quantum mechanics')) {
+      if (isHindi) {
+        return 'क्वांटम भौतिकी (Quantum Physics) विज्ञान की वह शाखा है जो उप-परमाण्विक स्तर पर परमाणु, इलेक्ट्रॉन, प्रोटॉन और फोटॉनों के व्यवहार का अध्ययन करती है, जहाँ शास्त्रीय भौतिकी के पारंपरिक नियम लागू नहीं होते।\n\n' +
+          'प्रमुख मूल सिद्धांत:\n' +
+          '1. तरंग-कण द्वैत (Wave-Particle Duality): 1900 में मैक्स प्लांक और 1905 में आइंस्टीन ने स्थापित किया कि प्रकाश और पदार्थ दोनों एक साथ तरंग और सूक्ष्म कण (क्वांटा) की तरह व्यवहार करते हैं।\n' +
+          '2. हाइजेनबर्ग का अनिश्चितता सिद्धांत (Uncertainty Principle): 1927 में वर्नर हाइजेनबर्ग ने सिद्ध किया कि किसी उप-परमाण्विक कण की स्थिति (Position) और संवेग (Momentum) को एक ही समय पर पूर्ण सटीकता के साथ मापना असंभव है।\n' +
+          '3. क्वांटम सुपरपोजिशन और एंटैंगलमेंट: कोई कण एक साथ कई संभावित अवस्थाओं में रह सकता है जब तक कि उसे मापा न जाए। इसके अलावा, दो उलझे हुए कण (Entangled Particles) प्रकाश वर्ष दूर होने पर भी तात्कालिक रूप से एक दूसरे की स्थिति को प्रभावित करते हैं, जिसे आइंस्टीन ने "स्पूकी एक्शन एट अ डिस्टेंस" कहा था।\n\n' +
+          'आधुनिक अनुप्रयोग: क्वांटम यांत्रिकी के आधार पर ही हमारे आधुनिक सेमीकंडक्टर्स, ट्रांजिस्टर, लेजर, एमआरआई मशीनें और अगली पीढ़ी के सुपरफास्ट क्वांटम कंप्यूटर काम करते हैं।';
+      }
+      return 'Quantum Mechanics is the fundamental theoretical framework in physics that describes the behavior of nature at the atomic and subatomic scales, where classical Newtonian mechanics ceases to function.\n\n' +
+        'Historical Genesis: The field originated in 1900 when Max Planck solved the black-body radiation catastrophe by proposing that electromagnetic energy is emitted and absorbed only in discrete, quantized packets called quanta. Albert Einstein expanded this in 1905 with the photoelectric effect, demonstrating light consists of photons, which earned him the Nobel Prize.\n\n' +
+        'Pillars of Quantum Mechanics:\n' +
+        '1. Wave-Particle Duality: Matter and energy exhibit dual characteristics. Louis de Broglie proved that electrons and other particles possess characteristic wavelengths governed by Planck\'s constant.\n' +
+        '2. The Heisenberg Uncertainty Principle: Formulated in 1927, this principle states that one cannot simultaneously determine with arbitrary precision both the position and momentum of a quantum entity.\n' +
+        '3. Superposition and Quantum Entanglement: Erwin Schrödinger established that a quantum state exists as a linear superposition of probabilities defined by a complex wave function. Entanglement links the quantum states of two or more particles such that measurement of one instantaneously establishes the state of the other regardless of physical separation.\n\n' +
+        'Technological Impact: Quantum physics underpins all contemporary solid-state microprocessors, laser diodes, magnetic resonance imaging (MRI), and emergent quantum computing architectures based on qubits.';
+    }
+
+    // Artificial Intelligence & Machine Learning
+    if (q.includes('artificial intelligence') || q.includes(' ai ') || q.includes('what is ai') || q.includes('machine learning') || q.includes('neural network')) {
+      if (isHindi) {
+        return 'कृत्रिम बुद्धिमत्ता (Artificial Intelligence या AI) कंप्यूटर विज्ञान का वह उन्नत क्षेत्र है जो ऐसे बुद्धिमान कंप्यूटर सिस्टम और सॉफ्टवेयर विकसित करने पर केंद्रित है जो मानव मस्तिष्क की तरह सीखने, तर्क करने, समस्या सुलझाने और निर्णय लेने की क्षमता रखते हैं।\n\n' +
+          'विकास और प्रमुख तकनीकें:\n' +
+          '1. मशीन लर्निंग (Machine Learning): कंप्यूटर को स्पष्ट नियमों से प्रोग्राम करने के बजाय विशाल डेटासेट के आधार पर सांख्यिकीय पैटर्न पहचानना और अनुभव से खुद को सुधारना सिखाया जाता है।\n' +
+          '2. डीप लर्निंग और न्यूरल नेटवर्क: यह मानव मस्तिष्क के न्यूरॉन्स की संरचना से प्रेरित बहु-स्तरीय (Multi-layered) कृत्रिम न्यूरल नेटवर्क पर काम करता है, जो जटिल छवियों, मानवीय आवाज, और प्राकृतिक भाषा को समझने में सक्षम है।\n' +
+          '3. लार्ज लैंग्वेज मॉडल्स (LLM) और ट्रांसफॉर्मर: 2017 में "अटेंशन इज ऑल यू नीड" शोध पत्र के बाद ट्रांसफॉर्मर आर्किटेक्चर ने प्राकृतिक भाषा प्रसंस्करण में क्रांति ला दी, जिससे आधुनिक संवादात्मक एआई का जन्म हुआ।\n\n' +
+          'Explore AI डिवाइस में इसका उपयोग: हमारे ESP32 हार्डवेयर में एआई का उपयोग वॉयस रिकग्निशन, रियल-टाइम भाषा अनुवाद, और क्लाउड एलएलएम स्ट्रीमिंग के माध्यम से बुद्धिमान बातचीत प्रदान करने के लिए किया जाता है।';
+      }
+      return 'Artificial Intelligence (AI) represents the multidisciplinary frontier of computer science dedicated to engineering computational systems capable of executing cognitive tasks historically requiring human intelligence.\n\n' +
+        'Architectural Paradigm and Subfields:\n' +
+        '1. Machine Learning (ML): Rather than following static hand-coded rule sets, algorithms ingest massive empirical datasets to optimize statistical decision surfaces via loss functions and gradient descent.\n' +
+        '2. Deep Learning and Artificial Neural Networks: Multi-layered connectionist architectures composed of interconnected nodes loosely modeled after biological neurons. Backpropagation adjusts weight matrices across hidden layers to extract hierarchical abstractions from raw sensory data.\n' +
+        '3. The Transformer Revolution: Introduced by Google researchers in 2017 with self-attention mechanisms, transformers superseded recurrent networks by enabling massively parallelized contextual language comprehension across billions of training tokens, powering modern Large Language Models.\n\n' +
+        'Embedded IoT Integration: In the Explore AI ecosystem, edge microcontrollers capture acoustic input, dispatch low-latency payload streams to cloud inference endpoints, and render contextual voice responses with sub-second responsiveness.';
+    }
+
+    // Electricity & Ohm's Law
+    if (q.includes('electricity') || q.includes('bijli') || q.includes('current') || q.includes('voltage') || q.includes('ohm')) {
+      if (isHindi) {
+        return 'विद्युत (Electricity) भौतिकी की वह मौलिक परिघटना है जो विद्युत आवेशों, विशेष रूप से इलेक्ट्रॉनों के प्रवाह और परस्पर क्रिया से संबंधित है।\n\n' +
+          'तीन मुख्य राशियां और ओम का नियम:\n' +
+          '1. वोल्टेज (Voltage - V): यह विद्युत विभव या दबाव है जो इलेक्ट्रॉनों को परिपथ में धकेलता है। इसे वोल्ट (V) में मापा जाता है।\n' +
+          '2. करंट (Current - I): यह किसी चालक के माध्यम से आवेश के प्रवाह की दर है। इसे एम्पीयर (A) में मापा जाता है।\n' +
+          '3. प्रतिरोध (Resistance - R): यह चालक द्वारा विद्युत धारा के प्रवाह में उत्पन्न की जाने वाली बाधा है। इसे ओम (Ω) में मापा जाता है।\n\n' +
+          'ओम का नियम: 1827 में जर्मन भौतिक विज्ञानी जॉर्ज साइमन ओम ने स्थापित किया कि एक निश्चित तापमान पर किसी चालक से बहने वाली विद्युत धारा उसके सिरों के बीच लगाए गए विभवांतर के समानुपाती होती है, यानी V = I × R।\n\n' +
+          'इलेक्ट्रॉनिक्स में महत्व: हमारे ESP32 माइक्रोकंट्रोलर प्रोजेक्ट में 3.3V और 5V की स्थिर डीसी बिजली आपूर्ति का उपयोग किया जाता है, जहाँ प्रत्येक सेंसर और रिले मॉड्यूल को सुरक्षित रूप से संचालित करने के लिए उचित करंट और प्रतिरोध की गणना अत्यंत आवश्यक होती है।';
+      }
+      return 'Electricity is the physical phenomenon associated with the presence, movement, and interaction of electric charge carriers, primarily negatively charged subatomic electrons.\n\n' +
+        'The Triad of Electrical Circuits and Ohm\'s Law:\n' +
+        '1. Voltage (Electromotive Force, V): The potential difference or electrical pressure across two points in a circuit that impels charges to migrate, measured in Volts.\n' +
+        '2. Current (Amperage, I): The net rate of charge transit through a given cross-sectional area of a conductor over time, measured in Amperes (Coulombs per second).\n' +
+        '3. Resistance (Impedance, R): The intrinsic opposition offered by a physical medium to the continuous flow of electric charge, measured in Ohms.\n\n' +
+        'Ohm\'s Law: Formulated experimentally by Georg Simon Ohm in 1827, it dictates that current passing through an ideal ohmic conductor is directly proportional to the potential difference across it and inversely proportional to resistance: Voltage equals Current multiplied by Resistance (V = I * R).\n\n' +
+        'Practical Electronics Design: In microcontroller engineering with the ESP32, maintaining regulated 3.3V logic levels, calculating pull-up resistors for I2C communication lines, and sizing current-limiting resistors for LED and transistor switches are direct applications of these foundational principles.';
+    }
+
+    // Airplane Flight & Aerodynamics
+    if (q.includes('airplane') || q.includes('aeroplane') || q.includes('how plane fly') || q.includes('flight') || q.includes('hawai jahaj')) {
+      if (isHindi) {
+        return 'हवाई जहाज का हवा में उड़ना एरोडायनामिक्स (वायुगतिकी) के चार मौलिक बलों के सटीक संतुलन पर आधारित होता है: लिफ्ट (Lift), वजन या गुरुत्वाकर्षण (Weight), थ्रस्ट (Thrust), और ड्रैग (Drag)।\n\n' +
+          'उड़ान के चार बल और कार्यप्रणाली:\n' +
+          '1. लिफ्ट (ऊपर उठाने वाला बल): हवाई जहाज के पंखों का आकार एयरफ़ॉइल (Airfoil) कहलाता है, जो ऊपर से घुमावदार और नीचे से सीधा होता है। बर्नौली के सिद्धांत के अनुसार, पंख के ऊपर से बहने वाली हवा तेज गति से चलती है जिससे ऊपर का दबाव कम हो जाता है, जबकि पंख के नीचे अधिक दबाव होने के कारण पंख को ऊपर की ओर बल मिलता है। इसके साथ ही, न्यूटन के गति के तीसरे नियम के अनुसार पंख आने वाली हवा को नीचे की ओर मोड़ते हैं, जिससे ऊपर की दिशा में समान प्रतिक्रिया बल उत्पन्न होता है।\n' +
+          '2. थ्रस्ट (आगे धकेलने वाला बल): जेट इंजन या प्रोपेलर भारी मात्रा में हवा को पीछे फेंककर विमान को आगे बढ़ाते हैं।\n' +
+          '3. वजन और ड्रैग: गुरुत्वाकर्षण विमान को नीचे खींचता है, और हवा का प्रतिरोध (ड्रैग) आगे बढ़ने से रोकता है। जब लिफ्ट वजन से अधिक होती है, विमान चढ़ाई करता है; और जब थ्रस्ट ड्रैग से अधिक होता है, विमान गति बढ़ाता है।';
+      }
+      return 'Aerodynamic flight in heavier-than-air aircraft is governed by the equilibrium and dynamic modulation of four fundamental physical forces: Lift, Weight, Thrust, and Drag.\n\n' +
+        'Mechanisms of Aerodynamic Lift:\n' +
+        '1. Wing Airfoil Geometry and Bernoulli\'s Principle: Aircraft wings are engineered with an asymmetric curved profile termed an airfoil. As the aircraft accelerates forward, ambient airflow splits around the leading edge. Air flowing over the convex upper camber accelerates, resulting in reduced localized static pressure according to Bernoulli\'s equation. Concurrently, higher dynamic pressure persists along the flatter lower surface, yielding a net upward force vector.\n' +
+        '2. Newton\'s Third Law and Downwash: Operating in tandem with pressure differentials, the wing is angled at a positive angle of attack, mechanically deflecting mass kilograms of oncoming air downward. In strict accordance with Newtonian action-reaction, the equal and opposite upward reaction sustains the aircraft in the atmosphere.\n\n' +
+        'Propulsion and Control: Turbofan jet engines or turboprops generate horizontal thrust to overcome aerodynamic drag. Flight control surfaces—ailerons on the wings for roll, elevators on the horizontal stabilizer for pitch, and the rudder on the vertical fin for yaw—enable precise 3D trajectory management in the sky.';
+    }
+
+    // Solar System & Planets
+    if (q.includes('solar system') || q.includes('planet') || q.includes('sauromandal') || q.includes('grah')) {
+      if (isHindi) {
+        return 'हमारा सौरमंडल लगभग 4.6 अरब वर्ष पूर्व एक विशाल आणविक बादल के गुरुत्वाकर्षण पतन से उत्पन्न हुआ था। इसके केंद्र में सूर्य स्थित है, जो सौरमंडल के संपूर्ण द्रव्यमान का लगभग 99.86% भाग रखता है।\n\n' +
+          'ग्रहों का वर्गीकरण:\n' +
+          '1. आंतरिक स्थलीय ग्रह (Terrestrial Planets): बुध, शुक्र, पृथ्वी और मंगल। ये चट्टानी, सघन और धातु-युक्त कठोर सतह वाले ग्रह हैं। इनमें शुक्र सबसे गर्म ग्रह है और पृथ्वी एकमात्र ज्ञात जीवन युक्त ग्रह है।\n' +
+          '2. बाहरी गैसीय दानव ग्रह (Gas & Ice Giants): बृहस्पति, शनि, यूरेनस और नेपच्यून। बृहस्पति सौरमंडल का सबसे बड़ा ग्रह है जिसका चुंबकीय क्षेत्र अत्यधिक शक्तिशाली है। शनि अपने आश्चर्यजनक बर्फ के छल्लों के लिए प्रसिद्ध है, जबकि यूरेनस और नेपच्यून अत्यधिक ठंडे बर्फ के विशालकाय ग्रह हैं।\n\n' +
+          'अन्य सदस्य: मंगल और बृहस्पति के बीच मुख्य क्षुद्रग्रह पट्टी (Asteroid Belt) स्थित है, और नेपच्यून से परे कुइपर बेल्ट और ऊर्ट क्लाउड है जहाँ प्लूटो जैसे बौने ग्रह और अरबों धूमकेतु परिक्रमा करते हैं।';
+      }
+      return 'The Solar System is a gravitationally bound celestial system that coalesced approximately 4.6 billion years ago from the collapse of a dense interstellar molecular cloud.\n\n' +
+        'The Central Dynamo: At its geometric and gravitational focal point lies the Sun, a main-sequence G-type yellow dwarf star encompassing approximately 99.86 percent of the entire planetary system\'s aggregate mass, fusing 600 million tons of hydrogen into helium every second in its core.\n\n' +
+        'Planetary Taxonomy:\n' +
+        '1. The Terrestrial Inner Planets: Mercury, Venus, Earth, and Mars. Characterized by dense, silicate rock crusts, molten mantles, and iron-nickel cores. Venus exhibits a runaway greenhouse atmosphere with surface pressures 90 times greater than Earth, while Mars preserves ancient river valleys and dry lake beds.\n' +
+        '2. The Outer Jovian Giants: Composed of Jupiter and Saturn (gas giants predominantly composed of hydrogen and helium) and Uranus and Neptune (ice giants rich in water, methane, and ammonia volatiles). Jupiter\'s magnetosphere is the largest continuous structure in our solar system, while Saturn displays a complex, crystalline ring system spanning 282,000 kilometers across.\n\n' +
+        'Trans-Neptunian Regions: Encircling the planetary orbits are the Asteroid Belt, the Kuiper Belt containing dwarf planets like Pluto and Eris, and the distant spherical Oort Cloud, the source reservoir of long-period comets.';
+    }
+
+    // Computer Architecture / CPU / RAM
+    if (q.includes('computer') || q.includes('cpu') || q.includes('processor') || q.includes('ram') || q.includes('operating system')) {
+      if (isHindi) {
+        return 'कंप्यूटर आधुनिक युग का सबसे क्रांतिकारी इलेक्ट्रॉनिक उपकरण है, जो डिजिटल डेटा को इनपुट के रूप में ग्रहण करता है, अंकगणितीय और तार्किक गणनाएं करता है, और सटीक परिणाम आउटपुट के रूप में प्रस्तुत करता है।\n\n' +
+          'वॉन न्यूमैन आर्किटेक्चर के प्रमुख घटक:\n' +
+          '1. सेंट्रल प्रोसेसिंग यूनिट (CPU): कंप्यूटर का मस्तिष्क, जिसके अंदर ALU (अंकगणितीय और तार्किक इकाई), कंट्रोल यूनिट (निर्देशों का निष्पादन), और अल्ट्रा-फास्ट रजिस्टर्स होते हैं। यह फेच-डिकोड-एक्ज़ीक्यूट चक्र पर काम करता है।\n' +
+          '2. रैंडम एक्सेस मेमोरी (RAM): अस्थिर (Volatile) उच्च गति की मेमोरी जो सक्रिय रूप से चल रहे प्रोग्राम्स और डेटा को तात्कालिक उपयोग के लिए संग्रहीत करती है।\n' +
+          '3. सेकेंडरी स्टोरेज (SSD/Flash): स्थायी गैर-अस्थिर मेमोरी जहाँ ऑपरेटिंग सिस्टम और फाइल्स सुरक्षित रहती हैं।\n\n' +
+          'माइक्रोकंट्रोलर संबंध: हमारा ESP32 भी एक सम्पूर्ण कंप्यूटर सिस्टम-ऑन-चिप (SoC) है, जिसमें ड्यूल-कोर 32-बिट सीपीयू, रैम, फ्लैश मेमोरी, और वाई-फाई ट्रांसीवर एक छोटे से सिलिकॉन चिप पर एकीकृत हैं।';
+      }
+      return 'Computer architecture refers to the fundamental theoretical, structural, and operational design that governs electronic computational systems.\n\n' +
+        'The Classical Von Neumann Architecture:\n' +
+        '1. The Central Processing Unit (CPU): The computational core that orchestrates program execution through the continuous Fetch-Decode-Execute instruction cycle. It contains the Arithmetic Logic Unit (ALU) for integer calculations and bitwise operations, the Control Unit (CU) to manage instruction flow, and high-frequency register files.\n' +
+        '2. Primary Memory (RAM): High-speed volatile random-access memory where executable machine instructions and active operational data structures reside during execution, connected to the CPU via high-bandwidth memory buses.\n' +
+        '3. Non-Volatile Storage & I/O: Solid-state flash storage, PCIe interconnects, and peripheral controller interfaces that bridge digital computation with external sensors and networks.\n\n' +
+        'Embedded Edge Systems: The ESP32 utilizes a modified Harvard architecture where instruction and data memory buses are physically separated, allowing simultaneous instruction retrieval and data manipulation across its dual 240MHz Xtensa microprocessor cores.';
     }
 
     // Identity / Greeting

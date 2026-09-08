@@ -53,6 +53,28 @@ if (fs.existsSync(distDir)) {
   copyDirSync(distDir, docsDir);
   fs.writeFileSync(path.join(docsDir, '.nojekyll'), '', 'utf-8');
   console.log('Successfully mirrored dist/ to docs/ for instant GitHub Pages deployment.');
+
+  // 5. Also copy assets to root /assets/ for compatibility with root-level GitHub Pages deployments
+  const rootAssetsDir = path.join(rootDir, 'assets');
+  if (fs.existsSync(rootAssetsDir)) {
+    fs.rmSync(rootAssetsDir, { recursive: true, force: true });
+  }
+  copyDirSync(path.join(distDir, 'assets'), rootAssetsDir);
+
+  // 6. Provide backwards-compatible bridge for index-MRXryAcI.js if requested by cached browsers
+  try {
+    const assetFiles = fs.readdirSync(path.join(distDir, 'assets'));
+    const mainBundle = assetFiles.find(f => f.startsWith('index-') && f.endsWith('.js') && f !== 'index-MRXryAcI.js');
+    if (mainBundle) {
+      const bridgeContent = `import './${mainBundle}';\n`;
+      fs.writeFileSync(path.join(distDir, 'assets', 'index-MRXryAcI.js'), bridgeContent, 'utf-8');
+      fs.writeFileSync(path.join(docsDir, 'assets', 'index-MRXryAcI.js'), bridgeContent, 'utf-8');
+      fs.writeFileSync(path.join(rootAssetsDir, 'index-MRXryAcI.js'), bridgeContent, 'utf-8');
+      console.log(`Created compatibility bridge index-MRXryAcI.js -> ${mainBundle}`);
+    }
+  } catch (e) {
+    console.warn('Bridge creation skipped:', e);
+  }
 }
 
 console.log('Post-build finished successfully.');

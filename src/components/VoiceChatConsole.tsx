@@ -197,9 +197,9 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
             speechEndTimerRef.current = null;
           }
 
-          // Immediate response: when the browser marks utterance as final, respond in 200ms.
-          // For interim pauses, wait 450ms.
-          const delayMs = hasFinal ? 200 : 450;
+          // Immediate response: when the browser marks utterance as final, respond in 100ms.
+          // For interim pauses, wait 350ms.
+          const delayMs = hasFinal ? 100 : 350;
 
           speechEndTimerRef.current = setTimeout(() => {
             setIsListeningToFullQuestion(false);
@@ -212,6 +212,39 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
               handleSendRef.current(undefined, finalQuery);
             }
           }, delayMs);
+        }
+      };
+
+      recognition.onspeechend = () => {
+        // User stopped speaking: dispatch answer immediately!
+        const query = (currentSpeechCandidateRef.current || inputRef.current || '').trim();
+        if (query.length >= 2 && !isProcessingRef.current && !isSpeakingRef.current) {
+          if (speechEndTimerRef.current) {
+            clearTimeout(speechEndTimerRef.current);
+            speechEndTimerRef.current = null;
+          }
+          currentSpeechCandidateRef.current = '';
+          setIsListeningToFullQuestion(false);
+          wakeWordAwakenedRef.current = false;
+          safeStopRecognition();
+          onOledStateChange('PROCESSING');
+          handleSendRef.current(undefined, query);
+        }
+      };
+
+      recognition.onsoundend = () => {
+        const query = (currentSpeechCandidateRef.current || inputRef.current || '').trim();
+        if (query.length >= 2 && !isProcessingRef.current && !isSpeakingRef.current) {
+          if (speechEndTimerRef.current) {
+            clearTimeout(speechEndTimerRef.current);
+            speechEndTimerRef.current = null;
+          }
+          currentSpeechCandidateRef.current = '';
+          setIsListeningToFullQuestion(false);
+          wakeWordAwakenedRef.current = false;
+          safeStopRecognition();
+          onOledStateChange('PROCESSING');
+          handleSendRef.current(undefined, query);
         }
       };
 
