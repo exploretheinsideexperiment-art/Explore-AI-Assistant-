@@ -8,6 +8,12 @@
       // Redirects 404s back to root index.html or docs/index.html with query/hash intact
       (function() {
         var l = window.location;
+        
+        // Never attempt SPA redirection on static asset requests (scripts, styles, images, binary firmware, etc.)
+        if (/\.(js|mjs|cjs|css|png|jpg|jpeg|gif|svg|ico|wasm|bin|json|map|woff|woff2|ttf|otf)$/i.test(l.pathname)) {
+          return;
+        }
+
         var isGitHubIo = l.hostname.endsWith('.github.io');
         var pathSegments = l.pathname.split('/').filter(Boolean);
         var segmentCount = 1; // 1 segment for user.github.io/repo-name/
