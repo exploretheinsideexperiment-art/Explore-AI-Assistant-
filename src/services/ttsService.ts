@@ -46,7 +46,27 @@ export class TTSService {
   }
 
   private queueCount: number = 0;
+  private streamIsActive: boolean = false;
   private onQueueAllEndCallback?: () => void;
+  private watchdogTimer?: any;
+
+  private startWatchdog() {
+    if (this.watchdogTimer) return;
+    this.watchdogTimer = setInterval(() => {
+      if (this.synth && this.synth.speaking && this.synth.paused) {
+        try {
+          this.synth.resume();
+        } catch (e) {}
+      }
+    }, 4000);
+  }
+
+  private stopWatchdog() {
+    if (this.watchdogTimer) {
+      clearInterval(this.watchdogTimer);
+      this.watchdogTimer = undefined;
+    }
+  }
 
   /**
    * Thoroughly sanitizes text so speech synthesis reads ONLY pure spoken words.
@@ -309,8 +329,27 @@ export class TTSService {
       this.synth.resume();
     }
     this.queueCount = 0;
+    this.streamIsActive = true;
     this.isSpeaking = false;
     this.onQueueAllEndCallback = onAllEnd;
+    this.startWatchdog();
+  }
+
+  /**
+   * Signals that the AI text stream has finished generating all sentences.
+   * If all enqueued sentences have completed, onAllEnd will be triggered.
+   */
+  public finishStreamingSession(): void {
+    this.streamIsActive = false;
+    if (this.queueCount <= 0) {
+      this.isSpeaking = false;
+      this.stopWatchdog();
+      if (this.onQueueAllEndCallback) {
+        const cb = this.onQueueAllEndCallback;
+        this.onQueueAllEndCallback = undefined;
+        cb();
+      }
+    }
   }
 
   /**
@@ -331,10 +370,12 @@ export class TTSService {
 
     const utterance = this.createUtterance(clean, settings);
     if (!utterance) {
-      // The sentence contained only formatting symbols (e.g. |---| or #) and no speakable words
-      if (this.queueCount <= 0 && this.onQueueAllEndCallback) {
+      // If no speakable words and queue is empty and stream finished, complete
+      if (this.queueCount <= 0 && !this.streamIsActive && this.onQueueAllEndCallback) {
         const cb = this.onQueueAllEndCallback;
         this.onQueueAllEndCallback = undefined;
+        this.isSpeaking = false;
+        this.stopWatchdog();
         cb();
       }
       return;
@@ -348,9 +389,11 @@ export class TTSService {
 
     utterance.onend = () => {
       this.queueCount = Math.max(0, this.queueCount - 1);
-      if (this.queueCount <= 0) {
+      // Only signal all finished if queue is empty AND stream has finished generating!
+      if (this.queueCount <= 0 && !this.streamIsActive) {
         this.queueCount = 0;
         this.isSpeaking = false;
+        this.stopWatchdog();
         if (this.onQueueAllEndCallback) {
           const cb = this.onQueueAllEndCallback;
           this.onQueueAllEndCallback = undefined;
@@ -365,9 +408,10 @@ export class TTSService {
         console.warn('[TTS] Speech queue error:', e);
       }
       this.queueCount = Math.max(0, this.queueCount - 1);
-      if (this.queueCount <= 0) {
+      if (this.queueCount <= 0 && !this.streamIsActive) {
         this.queueCount = 0;
         this.isSpeaking = false;
+        this.stopWatchdog();
         if (this.onQueueAllEndCallback) {
           const cb = this.onQueueAllEndCallback;
           this.onQueueAllEndCallback = undefined;
@@ -435,8 +479,10 @@ export class TTSService {
   }
 
   public stop(): void {
+    this.streamIsActive = false;
     this.queueCount = 0;
     this.onQueueAllEndCallback = undefined;
+    this.stopWatchdog();
     if (this.synth) {
       this.synth.cancel();
     }

@@ -47,6 +47,11 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
   const speechEndTimerRef = useRef<any>(null);
   const handleSendRef = useRef<(e?: React.FormEvent, customText?: string) => Promise<void>>(async () => {});
   const currentSpeechCandidateRef = useRef<string>('');
+  const inputRef = useRef<string>(input);
+
+  useEffect(() => {
+    inputRef.current = input;
+  }, [input]);
 
   useEffect(() => {
     isContinuousModeRef.current = isContinuousMode;
@@ -158,20 +163,10 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
         if (!fullTranscript) return;
 
         setInput(fullTranscript);
+        inputRef.current = fullTranscript;
 
         // Analyze for wake phrases: "Hey Explorer", "Hi Explorer", "Hello Explorer"
         const parsed = wakeWordService.parseWakeWord(fullTranscript);
-
-        // Check if either wake word is matched, or we were awakened, or continuous conversation is active
-        const isAwake = parsed.hasWakeWord || wakeWordAwakenedRef.current || isContinuousModeRef.current;
-        if (!isAwake) return;
-
-        // Extract query candidate
-        const queryCandidate = (parsed.hasWakeWord && parsed.cleanedQuery)
-          ? parsed.cleanedQuery.trim()
-          : fullTranscript.trim();
-
-        currentSpeechCandidateRef.current = queryCandidate;
 
         // Wake word alone spoken without question yet: e.g. "Hey Explorer"
         if (parsed.hasWakeWord && (!parsed.cleanedQuery || parsed.cleanedQuery.trim().length < 2)) {
@@ -185,29 +180,37 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
           return;
         }
 
+        // Extract query candidate: remove wake word prefix if present, otherwise take raw speech
+        const queryCandidate = (parsed.hasWakeWord && parsed.cleanedQuery)
+          ? parsed.cleanedQuery.trim()
+          : fullTranscript.trim();
+
+        currentSpeechCandidateRef.current = queryCandidate;
+
         if (queryCandidate.length >= 2) {
           setIsListeningToFullQuestion(true);
           onOledStateChange('LISTENING');
 
-          // Clear any running silence timer because speaker is speaking
+          // Clear any running silence timer because speaker is actively formulating
           if (speechEndTimerRef.current) {
             clearTimeout(speechEndTimerRef.current);
             speechEndTimerRef.current = null;
           }
 
-          // When the browser marks the utterance as finished (hasFinal: true), wait only 400ms for any follow-up word.
-          // Otherwise wait 800ms for interim pause before formulating answer.
-          const delayMs = hasFinal ? 400 : 800;
+          // Immediate response: when the browser marks utterance as final, respond in 200ms.
+          // For interim pauses, wait 450ms.
+          const delayMs = hasFinal ? 200 : 450;
 
           speechEndTimerRef.current = setTimeout(() => {
             setIsListeningToFullQuestion(false);
             wakeWordAwakenedRef.current = false;
-            // Stop speech recognition immediately when question is formulated
             safeStopRecognition();
             onOledStateChange('PROCESSING');
-            const finalQuery = currentSpeechCandidateRef.current || queryCandidate;
+            const finalQuery = (currentSpeechCandidateRef.current || queryCandidate).trim();
             currentSpeechCandidateRef.current = '';
-            handleSendRef.current(undefined, finalQuery);
+            if (finalQuery.length >= 2) {
+              handleSendRef.current(undefined, finalQuery);
+            }
           }, delayMs);
         }
       };
@@ -215,6 +218,21 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
       recognition.onend = () => {
         isRecognitionActiveRef.current = false;
         setIsMicCapturing(false);
+
+        // Instant response on mobile/Android silence detection:
+        // When speech recognition ends and there is a valid candidate, dispatch immediately!
+        const pendingQuery = (currentSpeechCandidateRef.current || inputRef.current || '').trim();
+        if (pendingQuery.length >= 2 && !isProcessingRef.current && !isSpeakingRef.current) {
+          if (speechEndTimerRef.current) {
+            clearTimeout(speechEndTimerRef.current);
+            speechEndTimerRef.current = null;
+          }
+          currentSpeechCandidateRef.current = '';
+          setIsListeningToFullQuestion(false);
+          wakeWordAwakenedRef.current = false;
+          onOledStateChange('PROCESSING');
+          handleSendRef.current(undefined, pendingQuery);
+        }
       };
 
       recognition.onerror = (e: any) => {
@@ -264,13 +282,13 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
     }
 
     if (isMicCapturing || isRecognitionActiveRef.current) {
-      // User clicked mic to finish question or turn off
+      // User clicked mic to finish question or turn off: immediately send whatever was captured!
       safeStopRecognition();
       setIsListeningToFullQuestion(false);
-      const targetQuery = currentSpeechCandidateRef.current || input;
-      if (targetQuery.trim().length >= 2) {
-        currentSpeechCandidateRef.current = '';
-        handleSendRef.current(undefined, targetQuery.trim());
+      const targetQuery = (currentSpeechCandidateRef.current || inputRef.current || input).trim();
+      currentSpeechCandidateRef.current = '';
+      if (targetQuery.length >= 2) {
+        handleSendRef.current(undefined, targetQuery);
       } else {
         triggerWakeNotice('Microphone turned off');
         onOledStateChange('READY');
@@ -282,7 +300,9 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
       wakeWordService.playWakeChime();
       triggerWakeNotice('🎤 Microphone ON — Please speak your question now...');
       setInput('');
+      inputRef.current = '';
       currentSpeechCandidateRef.current = '';
+      wakeWordAwakenedRef.current = true;
       safeStartRecognition();
     }
   };
@@ -390,6 +410,9 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
         }
       );
 
+      // Notify TTS service that LLM text generation is finished
+      ttsService.finishStreamingSession();
+
       // Finalize assistant message
       setMessages(prev => {
         const existingIdx = prev.findIndex(m => m.id === asstMsgId);
@@ -417,6 +440,7 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
       });
     } catch (err) {
       console.error('Failed to get response:', err);
+      ttsService.finishStreamingSession();
       onOledStateChange('ERROR');
       setTimeout(() => onOledStateChange('READY'), 2000);
     } finally {
@@ -838,6 +862,28 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
           }
           className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400"
         />
+
+        {isMicCapturing && (currentSpeechCandidateRef.current || input.trim()).length >= 2 && (
+          <button
+            type="button"
+            onClick={() => {
+              if (speechEndTimerRef.current) {
+                clearTimeout(speechEndTimerRef.current);
+                speechEndTimerRef.current = null;
+              }
+              const target = (currentSpeechCandidateRef.current || inputRef.current || input).trim();
+              currentSpeechCandidateRef.current = '';
+              safeStopRecognition();
+              setIsListeningToFullQuestion(false);
+              handleSendRef.current(undefined, target);
+            }}
+            className="h-10 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center gap-1 shrink-0 font-bold text-xs shadow-md animate-pulse"
+            title="Immediately send question and answer"
+          >
+            <Zap className="w-3.5 h-3.5 fill-slate-950" />
+            <span className="hidden sm:inline">Ask Now</span>
+          </button>
+        )}
 
         <button
           type="submit"

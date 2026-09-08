@@ -14,45 +14,56 @@ export class AIService {
 
   private buildSystemPrompt(settings: AgentSettings): string {
     const personalityMap: Record<string, string> = {
-      educational: 'You are an inspiring mentor and educator who explains complex technical concepts simply with real-world analogies.',
-      friendly: 'You are warm, empathetic, approachable, and encouraging like a helpful friend.',
-      professional: 'You are concise, direct, objective, and structured.',
-      technical: 'You are an expert embedded systems and software engineer providing precise architectural details, pinouts, and code snippets.',
-      general: 'You are a versatile, polite, and helpful personal assistant.'
+      educational: 'You are an inspiring mentor, scientist, and encyclopedic author who explains complex concepts with great depth, rigorous principles, and real-world analogies.',
+      friendly: 'You are warm, empathetic, approachable, and encouraging like a helpful, deeply knowledgeable friend.',
+      professional: 'You are authoritative, comprehensive, objective, and structured like a university reference text.',
+      technical: 'You are an expert embedded systems and software engineer providing precise architectural details, pinouts, and deep code explanations.',
+      general: 'You are a versatile, polite, and deeply knowledgeable personal assistant.'
     };
 
     const languageInstruction: Record<string, string> = {
-      'hi-IN': 'Respond strictly in clear, natural Hindi (Devanagari script or clean formal Hindi).',
-      'hinglish': 'Respond in natural Hinglish (conversational Hindi written in Roman English alphabet with common English technical terms).',
-      'bho-IN': 'Respond warmly in authentic Bhojpuri language.',
-      'bn-IN': 'Respond in natural Bengali (Bangla script).',
-      'mr-IN': 'Respond in natural Marathi (मराठी).',
-      'ta-IN': 'Respond in natural Tamil (தமிழ்).',
-      'te-IN': 'Respond in natural Telugu (తెలుగు).',
-      'gu-IN': 'Respond in natural Gujarati (ગુજરાતી).',
-      'kn-IN': 'Respond in natural Kannada (ಕನ್ನಡ).',
-      'ml-IN': 'Respond in natural Malayalam (മലയാളം).',
-      'pa-IN': 'Respond in natural Punjabi (ਪੰਜਾਬੀ).',
-      'ur-PK': 'Respond in natural Urdu (اردو).',
-      'en-IN': 'Respond in clear, articulate Indian English with thorough, comprehensive, and detailed explanations.'
+      'hi-IN': 'Respond strictly in clear, natural Hindi (Devanagari script or formal Hindi) with complete, book-style depth and comprehensive explanations.',
+      'hinglish': 'Respond in natural Hinglish (conversational Hindi written in Roman English alphabet with common English technical terms) with thorough, multi-paragraph book-style depth.',
+      'bho-IN': 'Respond warmly in authentic Bhojpuri language with full, thorough explanations.',
+      'bn-IN': 'Respond in natural Bengali (Bangla script) with rich, book-style detailed explanations.',
+      'mr-IN': 'Respond in natural Marathi (मराठी) with comprehensive, textbook-quality detail.',
+      'ta-IN': 'Respond in natural Tamil (தமிழ்) with thorough, detailed explanations.',
+      'te-IN': 'Respond in natural Telugu (తెలుగు) with comprehensive, book-style depth.',
+      'gu-IN': 'Respond in natural Gujarati (ગુજરાતી) with detailed explanations.',
+      'kn-IN': 'Respond in natural Kannada (ಕನ್ನಡ) with thorough, multi-paragraph explanations.',
+      'ml-IN': 'Respond in natural Malayalam (മലയാളം) with deep, comprehensive detail.',
+      'pa-IN': 'Respond in natural Punjabi (ਪੰਜਾਬੀ) with rich, detailed explanations.',
+      'ur-PK': 'Respond in natural Urdu (اردو) with comprehensive book-style explanations.',
+      'en-IN': 'Respond in clear, articulate Indian English with thorough, comprehensive, and exhaustive book-style explanations.'
     };
 
-    const langGuide = languageInstruction[settings.language] || 'Respond in clear, natural English.';
+    const langGuide = languageInstruction[settings.language] || 'Respond in clear, natural English with exhaustive, book-style depth.';
     const personalityGuide = personalityMap[settings.personality] || personalityMap.educational;
 
-    return `You are Explore AI Assistant, an advanced, highly articulate IoT AI voice assistant built for ESP32 and ESP32-S3 hardware.
-Your primary mission is to help users learn, understand, and explore science, technology, networking, electronics, IoT, microcontrollers, programming, history, mathematics, and general knowledge.
-CRITICAL ANSWER DEPTH & LENGTH DIRECTIVE:
-When the user asks any question, DO NOT give short, brief, or shallow answers. Always provide comprehensive, detailed, informative, and long answers!
-Thoroughly explain underlying concepts, architectural mechanisms, key components or stages, real-world examples, and step-by-step clarity. Give a full, deeply satisfying multi-paragraph explanation rather than a truncated summary.
-Avoid preambles like "Sure!" or "Certainly!". Jump straight into your comprehensive, informative explanation.
+    return `You are Explore AI Assistant, an advanced, highly knowledgeable IoT AI voice companion and encyclopedic tutor.
+MISSION & CORE PHILOSOPHY:
+Your mission is to provide rich, deeply educational, accurate, and exhaustive explanations across science, technology, physics, electronics, microcontrollers (ESP32, ESP32-S3), programming, history, mathematics, biology, astronomy, and general knowledge.
+
+CRITICAL DIRECTIVE - COMPREHENSIVE BOOK-STYLE IN-DEPTH ANSWERS:
+When the user asks ANY question, you MUST answer in FULL DETAIL, EXACTLY LIKE A REFERENCE BOOK OR TEXTBOOK CHAPTER!
+- Never provide brief, shallow, truncated, or superficial 1-2 sentence replies.
+- Treat every question as a comprehensive learning journey. Provide an in-depth, multi-paragraph explanation covering:
+  1. Foundational Definition & Core Concept: Clear, formal introduction to the subject and its fundamental laws or principles.
+  2. Historical Context & Origins: When, how, and by whom the concept or technology was discovered, invented, or theorized.
+  3. Deep Scientific / Engineering Mechanism: Step-by-step breakdown of how it works under the hood, including physical laws, architecture, components, or mathematics.
+  4. Real-World Applications & Examples: Concrete examples, industrial use-cases, and everyday analogies that solidify understanding.
+  5. Advanced Insights & Summary: Modern developments, future trajectory, and key takeaways.
+- Provide a deeply satisfying, long, multi-paragraph narrative that leaves no question unanswered.
+
 CRITICAL SPOKEN TEXT & CLEAN WORDS DIRECTIVE:
 Your answers will be read aloud by an audio text-to-speech voice synthesizer.
-Write strictly in clear, natural spoken sentences and paragraphs.
-NEVER generate markdown tables (no '|' pipes or '|---|---|' dividers). If comparing or listing items, describe them in fluent spoken sentences.
-NEVER use markdown headers with '#' or '##'.
-NEVER use raw formatting characters like asterisks, dashed divider lines, backticks, bullet dashes, or ASCII symbols.
-Use words instead of symbols and formatting characters, so that only clean words are read aloud.
+- Write strictly in clear, natural spoken sentences and flowing paragraphs.
+- NEVER generate markdown tables (no pipes '|' or divider lines). If comparing or listing items, describe them in fluent spoken sentences.
+- NEVER use markdown headers with hashes (#, ##, ###).
+- NEVER use raw formatting characters like asterisks (**bold**), dashed divider lines, backticks, bullet dashes (- or *), or ASCII symbols.
+- Use words instead of symbols and formatting characters, so that only clean, beautiful words are read aloud.
+- Jump straight into the substantive explanation without generic preambles like "Sure!" or "Certainly!".
+
 Personality: ${personalityGuide}
 Language Requirement: ${langGuide}
 ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemPromptAddition : ''}`;
@@ -102,12 +113,14 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
               if (sentenceDelimiters.test(sentenceBuffer) || (sentenceBuffer.length > 80 && /\s/.test(sentenceBuffer.slice(-5)))) {
                 const parts = sentenceBuffer.split(sentenceDelimiters);
                 if (parts.length > 1) {
-                  const completedSentence = parts.shift()?.trim();
-                  sentenceBuffer = parts.join(' ');
-                  if (completedSentence && completedSentence.length > 2) {
-                    if (onSentence) onSentence(completedSentence, isFirst);
-                    isFirst = false;
+                  while (parts.length > 1) {
+                    const completedSentence = parts.shift()?.trim();
+                    if (completedSentence && completedSentence.length > 2) {
+                      if (onSentence) onSentence(completedSentence, isFirst);
+                      isFirst = false;
+                    }
                   }
+                  sentenceBuffer = parts.join(' ');
                 }
               }
             }
@@ -166,7 +179,7 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
             model: settings.groqModel || 'llama-3.1-8b-instant',
             messages,
             temperature: Math.min(settings.temperature || 0.6, 0.7),
-            max_tokens: Math.max(settings.maxTokens || 2000, 2500),
+            max_tokens: Math.max(settings.maxTokens || 4000, 4500),
             stream: true
           })
         });
@@ -215,23 +228,72 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
     // Speed of Light
     if (q.includes('speed of light') || q.includes('light speed') || q.includes('prakash ki chaal') || q.includes('roshni ki raftar')) {
       if (isHindi) {
-        return 'प्रकाश की गति निर्वात में बिल्कुल 299,792,458 मीटर प्रति सेकंड (लगभग 3 लाख किलोमीटर प्रति सेकंड) होती है। भौतिकी में इसे सार्वभौमिक स्थिरांक "c" द्वारा दर्शाया जाता है। अल्बर्ट आइंस्टीन के सापेक्षता के सिद्धांत (Theory of Special Relativity) के अनुसार, ब्रह्मांड में किसी भी द्रव्यमान वाले पदार्थ या सूचना के संचरण की यह अधिकतम सीमा है। जब प्रकाश हवा, कांच या पानी जैसे सघन माध्यमों से गुजरता है, तो अपवर्तनांक (Refractive Index) के कारण इसकी गति थोड़ी कम हो जाती है। उदाहरण के लिए, पानी में यह गति लगभग 225,000 किलोमीटर प्रति सेकंड हो जाती है।';
+        return 'प्रकाश की गति निर्वात में बिल्कुल 299,792,458 मीटर प्रति सेकंड (लगभग 3 लाख किलोमीटर प्रति सेकंड या 186,282 मील प्रति सेकंड) होती है। भौतिकी में इसे सार्वभौमिक स्थिरांक "c" द्वारा दर्शाया जाता है, जो लैटिन शब्द "celeritas" से आता है जिसका अर्थ है वेग।\n\n' +
+          'ऐतिहासिक रूप से, 1676 में डेनिश खगोलशास्त्री ओले रोमर ने बृहस्पति के चंद्रमा आयो के ग्रहण का अध्ययन करते हुए पहली बार साबित किया था कि प्रकाश की गति सीमित है। 1905 में, अल्बर्ट आइंस्टीन ने अपने विशेष सापेक्षता के सिद्धांत में स्थापित किया कि प्रकाश की गति ब्रह्मांड में सूचना, ऊर्जा और किसी भी पदार्थ के संचरण की परम ब्रह्मांडीय सीमा है।\n\n' +
+          'वैज्ञानिक दृष्टिकोण से, प्रकाश की गति विद्युत चुंबकत्व के मौलिक नियमों से निर्धारित होती है, जो मैक्सवेल के समीकरणों में निर्वात की विद्युतशीलता (Permittivity) और पारगम्यता (Permeability) के व्युत्क्रमानुपाती वर्गमूल के बराबर होती है। जब प्रकाश कांच, पानी या फाइबर ऑप्टिक केबल जैसे सघन माध्यमों से गुजरता है, तो पदार्थ के परमाणुओं के साथ परस्पर क्रिया के कारण इसका प्रभावी वेग कम हो जाता है, जिसे अपवर्तनांक कहते हैं।\n\n' +
+          'हमारे दैनिक जीवन में, सूर्य की किरणों को 15 करोड़ किलोमीटर की दूरी तय करके पृथ्वी तक पहुँचने में लगभग 8 मिनट और 20 सेकंड का समय लगता है, और आधुनिक इंटरनेट फाइबर ऑप्टिक्स के माध्यम से प्रकाश तरंगों पर ही संचालित होता है।';
       }
       if (isHinglish) {
-        return 'Speed of light vacuum me exactly 299,792 kilometers per second hoti hai, jise round figure me hum 3 lakh kilometers per second kehte hain! Albert Einstein ki Theory of Relativity ke mutabik, universe me koi bhi object jisme mass ho, wo is speed se tezi se travel nahi kar sakta. Suraj ki roshni ko Dharti tak aane me lagbhag 8 minute aur 20 second ka waqt lagta hai.';
+        return 'Speed of light vacuum me exactly 299,792,458 meters per second hoti hai, jise hum round figure me 3 lakh kilometers per second ya 186,282 miles per second kehte hain. Physics me ise universal constant "c" se denote kiya jata hai, jo Latin word "celeritas" yaani swiftness se aaya hai.\n\n' +
+          'History ki baat karein to 1676 me astronomer Ole Romer ne Jupiter ke moon Io ke eclipse ko observe karke sabse pehle prove kiya tha ki light instantaneous nahi hai, balki iski ek finite speed hoti hai. Baad me Albert Einstein ne apni famous Special Theory of Relativity me discover kiya ki light ki speed universe me information aur matter ke travel karne ki absolute cosmic speed limit hai.\n\n' +
+          'Scientific mechanism me, Maxwell ke electromagnetic equations prove karte hain ki light electric aur magnetic fields ke self-propagating oscillation se banti hai. Jab light vacuum se nikal kar dense medium jaise water, glass ya optic fiber me enter karti hai, to atoms ke electrons se interact karne ke karan iski effective speed thodi slow ho jaati hai, jise refractive index kehte hain.\n\n' +
+          'Real world me iska practical impact ye hai ki Suraj ki roshni ko Dharti tak aane me lagbhag 8 minute aur 20 second lagte hain, aur humara modern global internet optical fiber cables me isi light pulse ke roop me data bhejta hai.';
       }
-      return 'The speed of light in a vacuum is exactly 299,792,458 meters per second (approximately 186,282 miles per second or roughly 300,000 kilometers per second). Denoted by the symbol "c" in Albert Einstein\'s famous equation E = mc², it represents the absolute cosmic speed limit for the transmission of all matter, energy, and information in the universe. When light travels through dense transparent media such as water, glass, or optical fiber, its effective velocity decreases proportionally according to the material\'s refractive index.';
+      return 'The speed of light in a vacuum is universally fixed at precisely 299,792,458 meters per second (approximately 186,282 miles per second or roughly 300,000 kilometers per second). In fundamental physics, it is denoted by the universal constant "c", originating from the Latin word "celeritas", meaning swiftness.\n\n' +
+        'Historically, humans long debated whether light traveled instantaneously. In 1676, Danish astronomer Ole Romer conclusively demonstrated that light possessed a finite speed by meticulously measuring timing discrepancies during the eclipses of Jupiter\'s moon Io. In 1905, Albert Einstein unveiled his Special Theory of Relativity, fundamentally establishing that the vacuum speed of light is not only invariant across all inertial reference frames, but also represents the absolute cosmic velocity ceiling for all matter, energy, and information in spacetime.\n\n' +
+        'Under the hood, Maxwell\'s electromagnetic field equations revealed that light is an oscillating electromagnetic wave whose propagation speed is governed strictly by the vacuum permittivity and permeability of free space. When light traverses physical media—such as terrestrial air, pure water, optical crown glass, or quartz fiber optic strands—its phase velocity decelerates proportionally according to the medium\'s index of refraction, causing refraction and internal dispersion.\n\n' +
+        'In cosmic and practical terms, photons emitted from the surface of the Sun journey 150 million kilometers to strike the Earth in approximately 8 minutes and 20 seconds. Across telecommunications, high-density fiber optic backbones leverage this phenomenon to route global internet data packets at near-light speeds through silica cores across continental distances.';
     }
 
     // ESP32 Microcontroller
     if (q.includes('esp32') || q.includes('microcontroller') || q.includes('s3') || q.includes('esp 32')) {
       if (isHindi) {
-        return 'ESP32 एस्प्रेसिफ सिस्टम्स द्वारा निर्मित एक अत्यंत शक्तिशाली और लोकप्रिय 32-बिट माइक्रोकंट्रोलर है। इसमें 240 मेगाहर्ट्ज पर चलने वाला Xtensa ड्यूल-कोर प्रोसेसर, 520 किलोबाइट SRAM, और बिल्ट-इन 2.4 गीगाहर्ट्ज वाई-फाई और ब्लूटूथ 4.2 / BLE शामिल हैं। यह I2S, I2C, SPI, UART, और कैपेसिटिव टच सेंसर्स जैसे समृद्ध परिधीय इंटरफेस का समर्थन करता है। Explore AI में हम इसके ड्यूल-कोर आर्किटेक्चर का उपयोग करते हैं: एक कोर वास्तविक समय में I2S डिजिटल माइक्रोफोन और स्पीकर ऑडियो को प्रोसेस करता है, जबकि दूसरा कोर वाई-फाई नेटवर्किंग और क्लाउड एलएलएम संचार संभालता है।';
+        return 'ESP32 एस्प्रेसिफ सिस्टम्स द्वारा विकसित एक अत्यधिक लोकप्रिय, आधुनिक और शक्तिशाली 32-बिट सिस्टम-ऑन-चिप (SoC) माइक्रोकंट्रोलर है।\n\n' +
+          'आर्किटेक्चर और विशेषताएं: इसमें 240 मेगाहर्ट्ज तक की क्लॉक स्पीड पर चलने वाला ड्यूल-कोर Xtensa 32-बिट LX6 माइक्रोप्रोसेसर होता है। मेमोरी के संदर्भ में, इसमें 520 किलोबाइट का इंटरनल SRAM, 448 किलोबाइट का बूट ROM, और आमतौर पर 4 से 16 मेगाबाइट का एक्सटर्नल SPI फ्लैश स्टोरेज जुड़ा होता है। इसमें 2.4 गीगाहर्ट्ज का 802.11 b/g/n वाई-फाई और ब्लूटूथ 4.2 BLE हार्डवेयर स्तर पर एकीकृत हैं।\n\n' +
+          'Explore AI प्रोजेक्ट में इसकी भूमिका: यह माइक्रोकंट्रोलर हमारे एम्बेडेड वॉइस असिस्टेंट का दिल और दिमाग है। इसके दो समानांतर प्रोसेसर कोर हैं: कोर 0 डिजिटल I2S बस के जरिए INMP441 MEMS माइक्रोफोन से लगातार 24-बिट अनकंप्रेस्ड ऑडियो कैप्चर करता है और MAX98357A क्लास-डी एम्पलीफायर को क्रिस्टल-क्लियर साउंड स्ट्रीम करता है। साथ ही, कोर 1 वाई-फाई स्टैक, टीसीपी/आईपी नेटवर्किंग, और क्लाउड एलएलएम स्ट्रीमिंग के साथ निर्बाध संचार निष्पादित करता है।\n\n' +
+          'इसके अतिरिक्त, इसमें I2C पर चलने वाला 0.96 इंच SSD1306 OLED डिस्प्ले, और घरेलू उपकरणों को नियंत्रित करने वाले रिले चैनल्स आसानी से जोड़े जाते हैं, जिससे यह संपूर्ण स्टैंडअलोन IoT एआई डिवाइस बन जाता है।';
       }
-      if (isHinglish) {
-        return 'ESP32 Espressif Systems ka banaya hua ek flagship dual-core 32-bit microcontroller hai. Isme 240 MHz ki clock speed, integrated Wi-Fi aur Bluetooth LE milta hai. Explore AI Assistant me ye device I2S protocol ke zariye INMP441 digital microphone se clear 24-bit audio capture karta hai, aur MAX98357A amplifier ke zariye speaker par crisp audio play karta hai. Iska ek core audio processing sambhalta hai aur doosra core fast Wi-Fi communication execute karta hai.';
+      return 'The ESP32 is an ultra-versatile, high-performance system-on-a-chip (SoC) microcontroller engineered by Espressif Systems. Designed specifically for smart IoT applications, mobile wearables, and automated edge computing, it has revolutionized low-cost embedded electronics.\n\n' +
+        'Core Hardware Architecture: The ESP32 is powered by a dual-core 32-bit Xtensa LX6 microprocessor operating at clock frequencies up to 240 MHz, delivering approximately 600 DMIPS of computational throughput. It houses 520 Kilobytes of internal SRAM, 448 Kilobytes of ROM, and interfaces with external SPI flash memories ranging from 4 to 16 Megabytes. Integrated transceivers provide robust 2.4 GHz 802.11 b/g/n Wi-Fi and Bluetooth 4.2 / Bluetooth Low Energy (BLE) wireless protocols directly on the silicon.\n\n' +
+        'Role within Explore AI Assistant: In our dedicated IoT voice platform, the dual-core architecture is utilized in a master-worker configuration. Core 0 is assigned real-time digital audio management: reading uncompressed 24-bit pulse-code modulated (PCM) audio from the INMP441 MEMS microphone over the Inter-IC Sound (I2S) bus, and driving the MAX98357A Class-D digital power amplifier. Meanwhile, Core 1 handles network stacks, SSL/TLS handshakes, WebSockets, and token streaming from large language models.\n\n' +
+        'Peripheral Ecosystem: The SoC features rich interfaces including I2C for the SSD1306 graphic OLED status panel, high-speed SPI, hardware UARTs, capacitive touch sensing pads, and GPIO drive circuits to actuate multi-channel solid-state relay modules.';
+    }
+
+    // Photosynthesis / Biology
+    if (q.includes('photosynthesis') || q.includes('prakas sanshleshan') || q.includes('how plants make food')) {
+      if (isHindi) {
+        return 'प्रकाश संश्लेषण (Photosynthesis) पृथ्वी पर जीवन का सबसे मौलिक जैविक प्रक्रम है, जिसके द्वारा हरे पौधे, शैवाल और सायनोबैक्टीरिया सूर्य के प्रकाश की ऊर्जा का उपयोग करके कार्बन डाइऑक्साइड और पानी को ग्लूकोज (शर्करा) और जीवनदायी ऑक्सीजन में परिवर्तित करते हैं।\n\n' +
+          'रासायनिक क्रिया: 6 CO2 + 6 H2O + सौर ऊर्जा मिलकर C6H12O6 (ग्लूकोज) और 6 O2 (ऑक्सीजन) का निर्माण करते हैं।\n\n' +
+          'प्रक्रिया के दो मुख्य चरण:\n' +
+          '1. प्रकाश-निर्भर अभिक्रियाएं (Light Reactions): यह क्रिया पादप कोशिकाओं के क्लोरोप्लास्ट में मौजूद थाइलेकॉइड झिल्लियों में होती है। क्लोरोफिल वर्णक सूर्य के फोटॉनों को अवशोषित करते हैं, पानी के अणुओं को तोड़ते हैं (Photolysis), और ऊर्जा युक्त अणु एटीपी (ATP) और एनएडीपीएच (NADPH) बनाते हैं, जिससे ऑक्सीजन गैस निकलती है।\n' +
+          '2. प्रकाश-स्वतंत्र अभिक्रियाएं (Calvin Cycle): यह क्लोरोप्लास्ट के स्ट्रोमा में होती है, जहाँ रुबिस्को एंजाइम की सहायता से हवा से ली गई कार्बन डाइऑक्साइड को ग्लूकोज में परिवर्तित किया जाता है।\n\n' +
+          'पर्यावरणीय महत्व: प्रकाश संश्लेषण न केवल पृथ्वी के संपूर्ण वायुमंडल को 21% ऑक्सीजन प्रदान करता है, बल्कि यह पृथ्वी की संपूर्ण खाद्य श्रृंखला और बायोमास ऊर्जा का प्राथमिक स्रोत है।';
       }
-      return 'The ESP32 is a versatile system-on-a-chip (SoC) microcontroller engineered by Espressif Systems. Powered by a dual-core 32-bit Xtensa LX6 microprocessor clocked up to 240 MHz, it integrates 520 KB of internal SRAM and dedicated hardware transceivers for both 2.4 GHz 802.11 b/g/n Wi-Fi and Bluetooth 4.2 / Bluetooth Low Energy. In our Explore AI architecture, the ESP32 utilizes high-speed I2S peripheral interfaces to continuously acquire uncompressed 24-bit digital audio from the INMP441 MEMS microphone, stream voice packets to our AI inference pipeline, and feed synthesized audio directly to the MAX98357A I2S Class-D amplifier.';
+      return 'Photosynthesis is the foundational biochemical process that sustains complex life on Earth. Through photosynthesis, green plants, marine phytoplankton, and cyanobacteria harness radiant solar photons to synthesize energy-rich organic carbohydrates from atmospheric carbon dioxide and terrestrial water.\n\n' +
+        'The Universal Chemical Equation: Six molecules of carbon dioxide and six molecules of water, catalyzed by sunlight within chloroplasts, yield one molecule of glucose and six molecules of breathable diatomic oxygen.\n\n' +
+        'The Mechanism unfolds in two primary biochemical phases:\n' +
+        '1. The Light-Dependent Reactions: Taking place across the thylakoid membranes within plant chloroplasts, specialized chlorophyll a and b pigments absorb photons. This excitation energizes electrons and initiates the photolysis of water molecules into protons, electrons, and free oxygen gas. As electrons traverse Photosystems Two and One along the electron transport chain, they generate cellular chemical potential stored as ATP and NADPH.\n' +
+        '2. The Light-Independent Reactions (Calvin-Benson Cycle): Occurring in the liquid stroma of the chloroplast, the ubiquitous enzyme RuBisCO fixes atmospheric carbon dioxide into 3-phosphoglycerate, which is then reduced by ATP and NADPH into glyceraldehyde 3-phosphate and ultimately assembled into glucose, starches, and cellulose.\n\n' +
+        'Global Ecological Impact: Photosynthesis is the ultimate energy engine of our biosphere, generating virtually all atmospheric oxygen and establishing the primary nutritional baseline for every terrestrial and marine ecosystem.';
+    }
+
+    // Black Holes / Astronomy
+    if (q.includes('black hole') || q.includes('krishna vivar') || q.includes('event horizon')) {
+      if (isHindi) {
+        return 'ब्लैक होल (कृष्ण विवर) ब्रह्मांड का सबसे चरम और रहस्यमयी गुरुत्वाकर्षण क्षेत्र है, जहाँ पदार्थ इतना अधिक सघन रूप से संकुचित होता है कि अंतरिक्ष-समय का वक्र इतना तीव्र हो जाता है कि प्रकाश की किरणें भी इसके आकर्षण से बाहर नहीं निकल सकतीं।\n\n' +
+          'संरचना और प्रमुख भाग:\n' +
+          '1. घटना क्षितिज (Event Horizon): यह ब्लैक होल की वह अदृश्य सीमा है जिसे "नो रिटर्न की सीमा" कहा जाता है। इसके अंदर जाने वाली कोई भी वस्तु कभी वापस नहीं आ सकती। इसका अर्धव्यास श्वार्ज़स्चिल्ड त्रिज्या कहलाता है।\n' +
+          '2. गुरुत्वीय विलक्षणता (Gravitational Singularity): ब्लैक होल का केंद्रीय बिंदु जहाँ संपूर्ण द्रव्यमान शून्य आयतन में संकुचित माना जाता है, जहाँ वर्तमान भौतिकी के नियम टूट जाते हैं और घनत्व अनंत हो जाता है।\n' +
+          '3. अभिवृद्धि चक्र (Accretion Disk): जब ब्लैक होल गैस, धूल और तारों को अपनी ओर खींचता है, तो वे अत्यधिक गति और घर्षण से घूमते हुए लाखों डिग्री सेल्सियस गर्म हो जाते हैं और एक्स-रे किरणें उत्सर्जित करते हैं।\n\n' +
+          'स्टीफन हॉकिंग ने 1974 में क्वांटम यांत्रिकी और सामान्य सापेक्षता को जोड़ते हुए साबित किया था कि ब्लैक होल से अत्यंत धीमी गति से हॉकिंग विकिरण निकलता है, जिससे वे अंततः वाष्पीकृत हो जाते हैं।';
+      }
+      return 'A black hole is an astronomical region of spacetime exhibiting gravitational acceleration so immense that no particles, electromagnetic radiation, or even photons of light possess sufficient velocity to escape its boundary.\n\n' +
+        'Theoretical Foundation: Black holes are direct physical predictions of Albert Einstein\'s 1915 General Theory of Relativity. Months after Einstein published his field equations, German physicist Karl Schwarzschild calculated the exact mathematical solution describing the gravitational geometry surrounding a non-rotating, spherically symmetric mass.\n\n' +
+        'Anatomy of a Black Hole:\n' +
+        '1. The Event Horizon: The mathematical threshold and boundary of absolute no-return. The escape velocity at the event horizon equals the vacuum speed of light. Its radial dimension is governed by the Schwarzschild radius, proportional strictly to the enclosed mass.\n' +
+        '2. The Gravitational Singularity: At the geometric core lies a point where spacetime curvature and density approach infinite values according to classical general relativity, pointing toward the imperative need for a unified theory of Quantum Gravity.\n' +
+        '3. The Accretion Disk and Relativistic Jets: Gaseous interstellar material spiraling toward the horizon accelerates to relativistic velocities; intense viscous friction heats matter into a blinding plasma emitting luminous X-ray spectra observed across millions of light years.\n\n' +
+        'In 1974, physicist Stephen Hawking demonstrated that virtual quantum fluctuations near the horizon yield thermal emission now termed Hawking Radiation, proving that black holes are not completely static, but very gradually lose mass over cosmological epochs.';
     }
 
     // Science Fact
