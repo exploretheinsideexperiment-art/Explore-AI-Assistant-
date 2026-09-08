@@ -5,22 +5,27 @@
     <title>Explore AI Assistant</title>
     <script>
       // Single Page Apps for GitHub Pages
-      // Redirects 404s back to root index.html with query/hash intact
+      // Redirects 404s back to root index.html or docs/index.html with query/hash intact
       (function() {
-        var segmentCount = 1; // 1 segment for https://username.github.io/repo-name/
         var l = window.location;
-        // Determine segment count:
-        // 0 segments for custom domains (e.g. example.com/my-page) or user pages (user.github.io/my-page)
-        // 1 segment for GitHub project pages (e.g. user.github.io/repo-name/my-page)
         var isGitHubIo = l.hostname.endsWith('.github.io');
-        var isUserRootPage = isGitHubIo && l.pathname.split('/')[1] && l.pathname.split('/')[1] === l.hostname.split('.')[0];
+        var pathSegments = l.pathname.split('/').filter(Boolean);
+        var segmentCount = 1; // 1 segment for user.github.io/repo-name/
+        
+        var isUserRootPage = isGitHubIo && pathSegments.length > 0 && pathSegments[0] === l.hostname.split('.')[0];
         if (!isGitHubIo || isUserRootPage) {
           segmentCount = 0;
         }
-        var pathSegments = l.pathname.split('/');
-        var basePath = pathSegments.slice(0, 1 + segmentCount).join('/');
+        
+        // Detect if the app is being hosted inside a /docs/ subdirectory
+        var inDocs = pathSegments.length > segmentCount && pathSegments[segmentCount] === 'docs';
+        if (inDocs) {
+          segmentCount += 1;
+        }
+        
+        var basePath = '/' + pathSegments.slice(0, segmentCount).join('/');
         if (!basePath.endsWith('/')) basePath += '/';
-        var restOfPath = pathSegments.slice(1 + segmentCount).join('/');
+        var restOfPath = pathSegments.slice(segmentCount).join('/');
         
         var redirectUrl = l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + basePath +
           '?p=/' + encodeURIComponent(restOfPath) +

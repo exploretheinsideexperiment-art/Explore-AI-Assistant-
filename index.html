@@ -18,6 +18,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
     <script>
+      window.__IS_DEV_SOURCE__ = false;
       // Universal Path Normalizer & Trailing Slash Enforcer:
       // Prevents 404 errors when resolving relative assets across GitHub Pages, custom domains, and subdirectories
       (function() {
@@ -27,6 +28,16 @@
           if (!l.pathname.endsWith('/') && !l.pathname.split('/').pop().includes('.')) {
             l.replace(l.protocol + '//' + l.host + l.pathname + '/' + l.search + l.hash);
             return;
+          }
+          // If served as uncompiled raw source on GitHub Pages (branch main / root):
+          // Seamlessly redirect to the compiled build in /docs/ to prevent raw tsx load failure
+          if (l.hostname.endsWith('github.io') && window.__IS_DEV_SOURCE__) {
+            var path = l.pathname;
+            if (!path.includes('/docs/')) {
+              var targetDir = path.endsWith('/') ? path + 'docs/' : path + '/docs/';
+              l.replace(l.protocol + '//' + l.host + targetDir + l.search + l.hash);
+              return;
+            }
           }
           // Decode 404 SPA redirect parameters into application hash route
           if (l.search && l.search.includes('p=')) {
@@ -45,8 +56,8 @@
         }
       })();
     </script>
-    <script type="module" crossorigin src="/Explore-AI-Assistant-/assets/index-DYA83IQB.js"></script>
-    <link rel="stylesheet" crossorigin href="/Explore-AI-Assistant-/assets/index-CiLGEMt9.css">
+    <script type="module" crossorigin src="/Explore-AI-Assistant-/assets/index-BH9JPCZj.js"></script>
+    <link rel="stylesheet" crossorigin href="/Explore-AI-Assistant-/assets/index-B1h2ipS8.css">
   </head>
   <body class="bg-[#080d1a] text-slate-100 antialiased font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
     <div id="root">
