@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Explore AI Assistant</title>
+    <script>
+      // Single Page Apps for GitHub Pages
+      // Redirects 404s back to root index.html with query/hash intact
+      (function() {
+        var segmentCount = 1; // 1 segment for https://username.github.io/repo-name/
+        var l = window.location;
+        // If on root domain (custom domain or username.github.io directly)
+        if (l.hostname.endsWith('.github.io') && l.pathname.split('/')[1] && l.pathname.split('/')[1] === l.hostname.split('.')[0]) {
+          segmentCount = 0;
+        }
+        var pathSegments = l.pathname.split('/');
+        var basePath = pathSegments.slice(0, 1 + segmentCount).join('/');
+        if (!basePath.endsWith('/')) basePath += '/';
+        var restOfPath = pathSegments.slice(1 + segmentCount).join('/');
+        
+        var redirectUrl = l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + basePath +
+          '?p=/' + encodeURIComponent(restOfPath) +
+          (l.search ? '&q=' + encodeURIComponent(l.search.slice(1)) : '') +
+          l.hash;
+        
+        l.replace(redirectUrl);
+      })();
+    </script>
+  </head>
+  <body style="background:#020617;color:#94a3b8;font-family:sans-serif;padding:2rem;text-align:center;">
+    <p>Redirecting to Explore AI Assistant...</p>
+  </body>
+</html>

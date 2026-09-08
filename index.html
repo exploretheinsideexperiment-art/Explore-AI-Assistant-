@@ -17,9 +17,45 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script>
+      // 1. GitHub Pages Trailing-Slash Enforcer:
+      // Prevents 404 errors when resolving relative assets like ./assets/...
+      (function() {
+        try {
+          var l = window.location;
+          if (l.hostname.endsWith('github.io') && !l.pathname.endsWith('/') && !l.pathname.split('/').pop().includes('.')) {
+            window.location.replace(l.protocol + '//' + l.host + l.pathname + '/' + l.search + l.hash);
+          }
+          // 2. Decode 404 SPA redirect parameters into application hash route:
+          if (l.search && l.search.includes('p=')) {
+            var params = new URLSearchParams(l.search);
+            var p = params.get('p');
+            if (p) {
+              var cleanRoute = p.replace(/^\//, '').replace(/\/$/, '');
+              if (cleanRoute) {
+                l.hash = cleanRoute;
+              }
+              window.history.replaceState(null, '', l.pathname + l.hash);
+            }
+          }
+        } catch (e) {
+          console.warn('Navigation normalizer error:', e);
+        }
+      })();
+    </script>
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
-    <div id="root"></div>
+    <div id="root">
+      <!-- Fallback shown only if JavaScript completely fails to load -->
+      <noscript>
+        <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#020617;color:#f8fafc;font-family:sans-serif;padding:24px;text-align:center;">
+          <div>
+            <h1 style="font-size:20px;font-weight:700;color:#38bdf8;margin-bottom:8px;">Explore AI Assistant</h1>
+            <p style="color:#94a3b8;font-size:14px;">JavaScript is required to run the Web Serial flasher and AI voice assistant.</p>
+          </div>
+        </div>
+      </noscript>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -4,8 +4,25 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
+  // Permanently prevent blank white screens on GitHub Pages:
+  // Dynamically resolve repository subpath if running in GitHub Actions,
+  // or use explicit VITE_BASE_PATH / BASE_PATH, or fallback safely to relative './'.
+  let basePath = process.env.VITE_BASE_PATH || process.env.BASE_PATH || '';
+  if (!basePath && process.env.GITHUB_REPOSITORY) {
+    const parts = process.env.GITHUB_REPOSITORY.split('/');
+    const repo = parts[1] || '';
+    if (repo && !repo.endsWith('.github.io')) {
+      basePath = `/${repo}/`;
+    } else {
+      basePath = '/';
+    }
+  }
+  if (!basePath) {
+    basePath = './';
+  }
+
   return {
-    base: './',
+    base: basePath,
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

@@ -19,6 +19,56 @@ import { FirmwareBrowser } from './components/FirmwareBrowser';
 import { PinConfigurator } from './components/PinConfigurator';
 import { UsbFlasherView } from './components/UsbFlasherView';
 
+function sanitizeHardwareProfile(raw: unknown): CustomHardwareProfile {
+  const defaultBoard = HARDWARE_BOARDS['ESP32-S3'] || Object.values(HARDWARE_BOARDS)[0];
+  const fallbackPreset = defaultBoard.recommendedPreset;
+
+  if (!raw || typeof raw !== 'object') {
+    return fallbackPreset;
+  }
+
+  try {
+    const p = raw as Partial<CustomHardwareProfile>;
+    const variant = p.variant && HARDWARE_BOARDS[p.variant] ? p.variant : 'ESP32-S3';
+    const basePreset = HARDWARE_BOARDS[variant]?.recommendedPreset || fallbackPreset;
+
+    return {
+      ...basePreset,
+      ...p,
+      variant,
+      boardName: p.boardName || basePreset.boardName,
+      flashSizeMb: typeof p.flashSizeMb === 'number' ? p.flashSizeMb : basePreset.flashSizeMb,
+      psram: typeof p.psram === 'boolean' ? p.psram : basePreset.psram,
+      mic: {
+        ...basePreset.mic,
+        ...(p.mic || {}),
+      },
+      amp: {
+        ...basePreset.amp,
+        ...(p.amp || {}),
+      },
+      display: {
+        ...basePreset.display,
+        ...(p.display || {}),
+      },
+      relays: {
+        ...basePreset.relays,
+        ...(p.relays || {}),
+        channels: Array.isArray(p.relays?.channels) && p.relays.channels.length > 0
+          ? p.relays.channels
+          : basePreset.relays.channels,
+      },
+      controls: {
+        ...basePreset.controls,
+        ...(p.controls || {}),
+      },
+    };
+  } catch (e) {
+    console.warn('Error sanitizing hardware profile, falling back to default:', e);
+    return fallbackPreset;
+  }
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     if (typeof window !== 'undefined' && window.location.hash) {
@@ -45,12 +95,12 @@ export default function App() {
     try {
       const saved = localStorage.getItem('explore_ai_hardware_profile');
       if (saved) {
-        return JSON.parse(saved);
+        return sanitizeHardwareProfile(JSON.parse(saved));
       }
     } catch (e) {
       console.warn('Failed to load custom hardware profile:', e);
     }
-    return HARDWARE_BOARDS['ESP32-S3'].recommendedPreset;
+    return sanitizeHardwareProfile(null);
   });
 
   const handleUpdateProfile = (updated: CustomHardwareProfile) => {

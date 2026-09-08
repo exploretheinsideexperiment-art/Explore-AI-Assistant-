@@ -208,7 +208,7 @@ export const UsbFlasherView: React.FC<UsbFlasherViewProps> = ({
 
     // Check if Web Serial is supported and whether we are running in an embedded preview iframe
     const isSerialSupported = 'serial' in navigator;
-    const inIframe = usbFlasher.isInIframe() || (typeof window !== 'undefined' && window.self !== window.top);
+    const inIframe = usbFlasher.isInIframe();
 
     // If running in preview iframe: Chrome blocks navigator.serial.requestPort() by permissions policy.
     // Automatically run the built-in flasher sequence so the user experiences the complete flashing flow,
