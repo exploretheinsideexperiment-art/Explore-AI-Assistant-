@@ -99,9 +99,53 @@ app.post("/api/chat", async (req, res) => {
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   const systemPrompt = buildSystemPrompt(settings);
+  const llmProvider = settings.llmProvider || "groq";
   const groqApiKey = settings.groqApiKey || process.env.GROQ_API_KEY;
-  const geminiApiKey = process.env.GEMINI_API_KEY;
-  if (groqApiKey && groqApiKey.trim().length > 5) {
+  const geminiApiKey = settings.geminiApiKey || process.env.GEMINI_API_KEY;
+  const geminiModelName = settings.geminiModel || "gemini-3.8-flash";
+  const temperature = typeof settings.temperature === "number" ? settings.temperature : 0.6;
+  const maxTokens = typeof settings.maxTokens === "number" ? settings.maxTokens : 3e3;
+  const runGemini = async () => {
+    if (!geminiApiKey) return false;
+    try {
+      const ai = new import_genai.GoogleGenAI({ apiKey: geminiApiKey });
+      const contents = [
+        ...history.slice(-4).map((m) => ({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.content }]
+        })),
+        {
+          role: "user",
+          parts: [{ text: query.trim() }]
+        }
+      ];
+      const responseStream = await ai.models.generateContentStream({
+        model: geminiModelName,
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: Math.min(Math.max(temperature, 0), 1.2),
+          maxOutputTokens: maxTokens
+        }
+      });
+      for await (const chunk of responseStream) {
+        const text = chunk.text;
+        if (text) {
+          res.write(`data: ${JSON.stringify({ text })}
+
+`);
+        }
+      }
+      res.write("data: [DONE]\n\n");
+      res.end();
+      return true;
+    } catch (geminiErr) {
+      console.error("[Server] Gemini request error:", geminiErr);
+      return false;
+    }
+  };
+  const runGroq = async () => {
+    if (!groqApiKey || groqApiKey.trim().length < 5) return false;
     try {
       const messages = [
         { role: "system", content: systemPrompt },
@@ -115,10 +159,10 @@ app.post("/api/chat", async (req, res) => {
           "Authorization": `Bearer ${groqApiKey.trim()}`
         },
         body: JSON.stringify({
-          model: settings.groqModel || "llama-3.1-8b-instant",
+          model: settings.groqModel || "llama-3.3-70b-versatile",
           messages,
-          temperature: Math.min(settings.temperature || 0.6, 0.7),
-          max_tokens: Math.max(settings.maxTokens || 4e3, 4500),
+          temperature: Math.min(Math.max(temperature, 0), 1.2),
+          max_tokens: maxTokens,
           stream: true
         })
       });
@@ -136,7 +180,8 @@ app.post("/api/chat", async (req, res) => {
             const dataStr = trimmed.replace(/^data:\s*/, "");
             if (dataStr === "[DONE]") {
               res.write("data: [DONE]\n\n");
-              return res.end();
+              res.end();
+              return true;
             }
             try {
               const parsed = JSON.parse(dataStr);
@@ -151,47 +196,24 @@ app.post("/api/chat", async (req, res) => {
           }
         }
         res.write("data: [DONE]\n\n");
-        return res.end();
+        res.end();
+        return true;
       }
     } catch (groqErr) {
-      console.warn("[Server] Groq request failed, falling back to Gemini:", groqErr);
+      console.warn("[Server] Groq request error:", groqErr);
     }
-  }
-  if (geminiApiKey) {
-    try {
-      const ai = new import_genai.GoogleGenAI({ apiKey: geminiApiKey });
-      const contents = [
-        ...history.slice(-4).map((m) => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.content }]
-        })),
-        {
-          role: "user",
-          parts: [{ text: query.trim() }]
-        }
-      ];
-      const responseStream = await ai.models.generateContentStream({
-        model: "gemini-3.8-flash",
-        contents,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.6,
-          maxOutputTokens: Math.max(settings.maxTokens || 4e3, 5e3)
-        }
-      });
-      for await (const chunk of responseStream) {
-        const text = chunk.text;
-        if (text) {
-          res.write(`data: ${JSON.stringify({ text })}
-
-`);
-        }
-      }
-      res.write("data: [DONE]\n\n");
-      return res.end();
-    } catch (geminiErr) {
-      console.error("[Server] Gemini request failed:", geminiErr);
-    }
+    return false;
+  };
+  if (llmProvider === "gemini") {
+    const success = await runGemini();
+    if (success) return;
+    const fallbackGroq = await runGroq();
+    if (fallbackGroq) return;
+  } else {
+    const success = await runGroq();
+    if (success) return;
+    const fallbackGemini = await runGemini();
+    if (fallbackGemini) return;
   }
   const fallback = `Explore AI received: "${query.trim()}". The IoT audio assistant is active and operational.`;
   res.write(`data: ${JSON.stringify({ text: fallback })}

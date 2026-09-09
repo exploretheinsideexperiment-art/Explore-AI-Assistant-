@@ -66,15 +66,21 @@ jobs:
           publish_dir: ./dist
           keep_files: false
 
-      - name: Sync docs and assets to repository
-        continue-on-error: true
+      - name: Sync all files and build artifacts to GitHub at once
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add docs/ assets/ 2>/dev/null || true
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git add -A
           if ! git diff --cached --quiet; then
-            git commit -m "chore: sync production build artifacts [skip ci]" || true
-            git push origin HEAD:${{ github.ref }} || echo "Direct push skipped (branch protection or restricted permissions)"
+            echo "Changes detected, committing and pushing all updates at once..."
+            git commit -m "chore: sync all updates and build artifacts [skip ci]"
+            BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+            git fetch origin "$BRANCH_NAME" || true
+            git rebase "origin/$BRANCH_NAME" || true
+            git push origin "HEAD:$BRANCH_NAME" || echo "Push completed or skipped"
+          else
+            echo "Working tree clean, all files already in sync."
           fi
 
 
