@@ -56,7 +56,11 @@ export const UsbFlasherView: React.FC<UsbFlasherViewProps> = ({
 
   // Ad banner state (unlocked in 3-dot menu)
   const [isPremium, setIsPremium] = useState<boolean>(() => {
-    return localStorage.getItem('espflash_premium') === 'true';
+    try {
+      return typeof window !== 'undefined' && !!window.localStorage && localStorage.getItem('espflash_premium') === 'true';
+    } catch {
+      return false;
+    }
   });
 
   // Settings (from Image 2)
@@ -379,7 +383,9 @@ export const UsbFlasherView: React.FC<UsbFlasherViewProps> = ({
   const handleTogglePremium = () => {
     const nextVal = !isPremium;
     setIsPremium(nextVal);
-    localStorage.setItem('espflash_premium', String(nextVal));
+    try {
+      localStorage.setItem('espflash_premium', String(nextVal));
+    } catch {}
     showToast(nextVal ? '👑 Premium Unlocked: Ads removed!' : 'Premium disabled.');
   };
 

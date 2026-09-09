@@ -61,16 +61,31 @@ if (fs.existsSync(distDir)) {
   }
   copyDirSync(path.join(distDir, 'assets'), rootAssetsDir);
 
-  // 6. Provide backwards-compatible bridge for index-MRXryAcI.js if requested by cached browsers
+  // 6. Provide universal entry bridge (app-entry.js and app-style.css) and backwards-compatible index-MRXryAcI.js
   try {
     const assetFiles = fs.readdirSync(path.join(distDir, 'assets'));
-    const mainBundle = assetFiles.find(f => f.startsWith('index-') && f.endsWith('.js') && f !== 'index-MRXryAcI.js');
-    if (mainBundle) {
-      const bridgeContent = `import './${mainBundle}';\n`;
-      fs.writeFileSync(path.join(distDir, 'assets', 'index-MRXryAcI.js'), bridgeContent, 'utf-8');
-      fs.writeFileSync(path.join(docsDir, 'assets', 'index-MRXryAcI.js'), bridgeContent, 'utf-8');
-      fs.writeFileSync(path.join(rootAssetsDir, 'index-MRXryAcI.js'), bridgeContent, 'utf-8');
-      console.log(`Created compatibility bridge index-MRXryAcI.js -> ${mainBundle}`);
+    const mainJs = assetFiles.find(f => f.startsWith('index-') && f.endsWith('.js') && f !== 'index-MRXryAcI.js');
+    const mainCss = assetFiles.find(f => f.startsWith('index-') && f.endsWith('.css'));
+
+    if (mainJs) {
+      const entryContent = `import './${mainJs}';\n`;
+      fs.writeFileSync(path.join(distDir, 'assets', 'app-entry.js'), entryContent, 'utf-8');
+      fs.writeFileSync(path.join(docsDir, 'assets', 'app-entry.js'), entryContent, 'utf-8');
+      fs.writeFileSync(path.join(rootAssetsDir, 'app-entry.js'), entryContent, 'utf-8');
+
+      // Compatibility bridge for any cached clients referencing index-MRXryAcI.js
+      fs.writeFileSync(path.join(distDir, 'assets', 'index-MRXryAcI.js'), entryContent, 'utf-8');
+      fs.writeFileSync(path.join(docsDir, 'assets', 'index-MRXryAcI.js'), entryContent, 'utf-8');
+      fs.writeFileSync(path.join(rootAssetsDir, 'index-MRXryAcI.js'), entryContent, 'utf-8');
+      console.log(`Created universal entry bridge app-entry.js -> ${mainJs}`);
+    }
+
+    if (mainCss) {
+      const cssContent = `@import './${mainCss}';\n`;
+      fs.writeFileSync(path.join(distDir, 'assets', 'app-style.css'), cssContent, 'utf-8');
+      fs.writeFileSync(path.join(docsDir, 'assets', 'app-style.css'), cssContent, 'utf-8');
+      fs.writeFileSync(path.join(rootAssetsDir, 'app-style.css'), cssContent, 'utf-8');
+      console.log(`Created universal style bridge app-style.css -> ${mainCss}`);
     }
   } catch (e) {
     console.warn('Bridge creation skipped:', e);

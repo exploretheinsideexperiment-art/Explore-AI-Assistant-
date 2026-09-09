@@ -12,19 +12,11 @@ export default defineConfig(({ command }) => {
   if (command === 'build') {
     if (process.env.VITE_BASE_PATH) {
       basePath = process.env.VITE_BASE_PATH;
-    } else if (process.env.BASE_PATH) {
+    } else if (process.env.BASE_PATH && process.env.BASE_PATH !== '/') {
       basePath = process.env.BASE_PATH;
-    } else if (process.env.GITHUB_REPOSITORY) {
-      const parts = process.env.GITHUB_REPOSITORY.split('/');
-      const repo = parts[1] || '';
-      if (repo && !repo.endsWith('.github.io')) {
-        basePath = `/${repo}/`;
-      } else {
-        basePath = '/';
-      }
     }
-
-    // Ensure directory subpaths end with a slash
+    // Default to relative './' which works seamlessly in all GitHub Pages configurations:
+    // /docs folder, root / folder, gh-pages branch, or custom domain!
     if (basePath && basePath !== './' && !basePath.endsWith('/')) {
       basePath += '/';
     }

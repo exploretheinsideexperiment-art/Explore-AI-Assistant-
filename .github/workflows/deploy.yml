@@ -15,55 +15,66 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build-and-deploy:
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Setup Pages
+          cache: 'npm'
+
+      - name: Setup GitHub Pages configuration
         id: pages
         uses: actions/configure-pages@v5
         continue-on-error: true
+
       - name: Install dependencies
-        run: npm install
-      - name: Build
-        env:
-          BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: npm ci || npm install
+
+      - name: Build production bundle
         run: npm run build
-      - name: Ensure 404 and nojekyll in dist
+
+      - name: Ensure .nojekyll and 404 exist in dist
         run: |
           touch ./dist/.nojekyll
-          cp ./public/404.html ./dist/404.html || true
-      - name: Upload artifact
+          cp ./public/404.html ./dist/404.html 2>/dev/null || true
+
+      - name: Upload artifact to GitHub Pages
         uses: actions/upload-pages-artifact@v3
         with:
           path: './dist'
+
       - name: Deploy to GitHub Actions Pages
         id: deployment
         uses: actions/deploy-pages@v4
         continue-on-error: true
-      - name: Deploy to gh-pages branch (Backup for branch-based hosting)
+
+      - name: Deploy to gh-pages branch (for branch-based hosting)
         uses: peaceiris/actions-gh-pages@v4
-        if: always()
+        continue-on-error: true
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           keep_files: false
-      - name: Auto-commit docs to main branch
-        if: always()
+
+      - name: Sync docs and assets to repository
+        continue-on-error: true
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add docs/
+          git add docs/ assets/ 2>/dev/null || true
           if ! git diff --cached --quiet; then
-            git commit -m "Auto-update docs production build [skip ci]"
-            git push origin HEAD:${{ github.ref }}
+            git commit -m "chore: sync production build artifacts [skip ci]" || true
+            git push origin HEAD:${{ github.ref }} || echo "Direct push skipped (branch protection or restricted permissions)"
           fi
+
 
