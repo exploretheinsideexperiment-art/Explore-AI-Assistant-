@@ -32,6 +32,18 @@ export type HardwareVariant =
   | 'ESP32-WROVER' 
   | 'ESP32-S2';
 
+export type ActiveTab = 
+  | 'console' 
+  | 'portal' 
+  | 'pinout' 
+  | 'usbflash' 
+  | 'settings' 
+  | 'device' 
+  | 'hardware' 
+  | 'knowledge' 
+  | 'firmware' 
+  | 'manual';
+
 export interface DeviceInfo {
   id: string;
   name: string;
@@ -113,6 +125,52 @@ export interface HardwareControlsPinConfig {
   statusLed: number;    // Builtin LED / NeoPixel
 }
 
+// --- Wi-Fi Connectivity Configuration ---
+export interface WifiConfig {
+  ssid: string;
+  password: string;
+  apSsid: string;
+  apPassword: string;
+  staticIpEnabled: boolean;
+  staticIp: string;
+  gateway: string;
+  subnet: string;
+  dns: string;
+  autoReconnect: boolean;
+  connectTimeoutSec: number;
+}
+
+// --- Cloud Telemetry, Webhook & MQTT Protocols ---
+export type CloudProtocol = 'none' | 'webhook' | 'mqtt' | 'both';
+
+export interface WebhookConfig {
+  enabled: boolean;
+  endpointUrl: string;
+  authToken: string;
+  httpMethod: 'POST' | 'GET';
+  triggerOnRelay: boolean;
+  triggerOnVoice: boolean;
+}
+
+export interface MqttConfig {
+  enabled: boolean;
+  brokerHost: string;
+  brokerPort: number;
+  clientId: string;
+  username: string;
+  password: string;
+  baseTopic: string;
+  subscribeRelayCommands: boolean;
+  publishTelemetry: boolean;
+  qos: 0 | 1 | 2;
+}
+
+export interface CloudIntegrationConfig {
+  protocol: CloudProtocol;
+  webhook: WebhookConfig;
+  mqtt: MqttConfig;
+}
+
 export interface CustomHardwareProfile {
   variant: HardwareVariant;
   boardName: string;
@@ -123,6 +181,8 @@ export interface CustomHardwareProfile {
   display: DisplayPinConfig;
   relays: RelayModuleConfig;
   controls: HardwareControlsPinConfig;
+  wifi: WifiConfig;
+  cloudIntegration: CloudIntegrationConfig;
 }
 
 export interface PinConflict {
@@ -164,7 +224,7 @@ export interface UploadedFirmwareFile {
   detectedType: 'app' | 'merged' | 'bootloader' | 'partitions' | 'boot_app0' | 'custom';
 }
 
-export type LLMProvider = 'groq' | 'gemini';
+export type LLMProvider = 'groq' | 'gemini' | 'auto';
 
 export type GroqModel = 
   | 'openai/gpt-oss-120b'
@@ -207,18 +267,31 @@ export interface AgentSettings {
   groqModel: GroqModel;
   searchApiKey: string;
   searchEngine: SearchEngine;
+  searchAutoGrounding?: boolean;
+  maxSearchResults?: number;
   geminiApiKey: string;
   geminiModel: string;
   personality: PersonalityMode;
   language: string; // e.g. "hi-IN", "hinglish", "en-IN"
+  autoLanguageDetect?: boolean;
   voiceGender: VoiceGender;
   voice: string;
-  voiceSpeed: number; // 0.8 - 1.5
-  voicePitch: number; // 0.8 - 1.2
+  voiceSpeed: number; // 0.6 - 1.5
+  voicePitch: number; // 0.7 - 1.3
+  voiceVolume?: number; // 0.2 - 1.5
   voiceMode: VoiceMode;
+  micOption?: 'click_to_ask' | 'always_on';
+  wakeWordPhrase?: string;
+  vadSensitivity?: 'low' | 'medium' | 'high';
+  silenceTimeoutSec?: number;
+  streamPipelining?: boolean;
   systemPromptAddition: string;
   temperature: number;
   maxTokens: number;
+  relayVoiceControl?: boolean;
+  relayVoiceFeedback?: boolean;
+  oledFaceAnimations?: boolean;
+  oledBlinkIntervalSec?: number;
 }
 
 export interface WiFiNetwork {

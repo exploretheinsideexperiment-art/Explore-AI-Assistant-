@@ -1,8 +1,8 @@
 import React from 'react';
 import { Cpu, Wifi, Sparkles, Sliders, Monitor, BookOpen, Terminal, Smartphone, Usb, SlidersHorizontal } from 'lucide-react';
-import { DeviceInfo } from '../types';
+import { DeviceInfo, ActiveTab } from '../types';
 
-export type ActiveTab = 'console' | 'portal' | 'pinout' | 'usbflash' | 'settings' | 'device' | 'hardware' | 'knowledge' | 'firmware';
+export type { ActiveTab };
 
 interface HeaderProps {
   activeTab: ActiveTab;
@@ -19,12 +19,13 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'console', label: 'Live Assistant', icon: <Sparkles className="w-4 h-4" /> },
     { id: 'pinout', label: 'Pin Configurator', icon: <SlidersHorizontal className="w-4 h-4 text-cyan-400" />, badge: 'ESP32' },
     { id: 'usbflash', label: 'ESPFlash (OTG)', icon: <Usb className="w-4 h-4 text-cyan-400" />, badge: 'Station' },
+    { id: 'settings', label: 'Agent Settings', icon: <Sliders className="w-4 h-4 text-amber-400" />, badge: 'Config' },
     { id: 'portal', label: 'Wi-Fi Provisioning', icon: <Wifi className="w-4 h-4" /> },
-    { id: 'settings', label: 'Agent Settings', icon: <Sliders className="w-4 h-4" /> },
     { id: 'device', label: 'Device Telemetry', icon: <Cpu className="w-4 h-4" /> },
     { id: 'hardware', label: 'Hardware Wiring', icon: <Monitor className="w-4 h-4" /> },
     { id: 'knowledge', label: 'Knowledge Base', icon: <BookOpen className="w-4 h-4" /> },
-    { id: 'firmware', label: 'Firmware Code', icon: <Terminal className="w-4 h-4" /> }
+    { id: 'firmware', label: 'Firmware Code', icon: <Terminal className="w-4 h-4 text-emerald-400" />, badge: 'Unified' },
+    { id: 'manual', label: 'Manual Guidelines', icon: <BookOpen className="w-4 h-4 text-amber-400" />, badge: 'Booklet' }
   ];
 
   return (

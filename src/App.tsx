@@ -18,6 +18,7 @@ import { KnowledgeBaseView } from './components/KnowledgeBaseView';
 import { FirmwareBrowser } from './components/FirmwareBrowser';
 import { PinConfigurator } from './components/PinConfigurator';
 import { UsbFlasherView } from './components/UsbFlasherView';
+import { ManualGuidelines } from './components/ManualGuidelines';
 
 function sanitizeHardwareProfile(raw: unknown): CustomHardwareProfile {
   const defaultBoard = HARDWARE_BOARDS['ESP32-S3'] || Object.values(HARDWARE_BOARDS)[0];
@@ -62,6 +63,22 @@ function sanitizeHardwareProfile(raw: unknown): CustomHardwareProfile {
         ...basePreset.controls,
         ...(p.controls || {}),
       },
+      wifi: {
+        ...basePreset.wifi,
+        ...(p.wifi || {}),
+      },
+      cloudIntegration: {
+        ...basePreset.cloudIntegration,
+        ...(p.cloudIntegration || {}),
+        webhook: {
+          ...basePreset.cloudIntegration.webhook,
+          ...(p.cloudIntegration?.webhook || {}),
+        },
+        mqtt: {
+          ...basePreset.cloudIntegration.mqtt,
+          ...(p.cloudIntegration?.mqtt || {}),
+        },
+      },
     };
   } catch (e) {
     console.warn('Error sanitizing hardware profile, falling back to default:', e);
@@ -73,7 +90,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     if (typeof window !== 'undefined' && window.location.hash) {
       const hash = window.location.hash.replace('#', '');
-      const validTabs: ActiveTab[] = ['console', 'settings', 'device', 'hardware', 'knowledge', 'firmware', 'pinout', 'usbflash', 'portal'];
+      const validTabs: ActiveTab[] = ['console', 'settings', 'device', 'hardware', 'knowledge', 'firmware', 'pinout', 'usbflash', 'portal', 'manual'];
       if (validTabs.includes(hash as ActiveTab)) {
         return hash as ActiveTab;
       }
@@ -288,7 +305,25 @@ export default function App() {
 
         {activeTab === 'firmware' && (
           <FirmwareBrowser
+            profile={customProfile}
+            settings={agentSettings}
             onNavigateToPinout={() => setActiveTab('pinout')}
+            onNavigateToUsbFlash={() => setActiveTab('usbflash')}
+            onNavigateToManual={() => setActiveTab('manual')}
+          />
+        )}
+
+        {activeTab === 'manual' && (
+          <ManualGuidelines
+            profile={customProfile}
+            onUpdateProfile={handleUpdateProfile}
+            settings={agentSettings}
+            onUpdateSettings={handleSaveSettings}
+            device={device}
+            onUpdateDevice={(updated) => setDevice(prev => ({ ...prev, ...updated }))}
+            onNavigateToTab={(tab) => setActiveTab(tab)}
+            onNavigateToPinout={() => setActiveTab('pinout')}
+            onNavigateToFirmware={() => setActiveTab('firmware')}
             onNavigateToUsbFlash={() => setActiveTab('usbflash')}
           />
         )}

@@ -29,16 +29,6 @@
             l.replace(l.protocol + '//' + l.host + l.pathname + '/' + l.search + l.hash);
             return;
           }
-          // If served as uncompiled raw source on GitHub Pages (branch main / root):
-          // Seamlessly redirect to the compiled build in /docs/ to prevent raw tsx load failure
-          if (l.hostname.endsWith('github.io') && window.__IS_DEV_SOURCE__) {
-            var path = l.pathname;
-            if (!path.includes('/docs/')) {
-              var targetDir = path.endsWith('/') ? path + 'docs/' : path + '/docs/';
-              l.replace(l.protocol + '//' + l.host + targetDir + l.search + l.hash);
-              return;
-            }
-          }
           // Decode 404 SPA redirect parameters into application hash route
           if (l.search && l.search.includes('p=')) {
             var params = new URLSearchParams(l.search);
@@ -51,13 +41,29 @@
               window.history.replaceState(null, '', l.pathname + l.hash);
             }
           }
+
+          // Universal Production Loader fallback (only if unbundled HTML is served directly without Vite)
+          var isDev = l.hostname === 'localhost' || l.hostname === '127.0.0.1' || l.port === '3000';
+          if (window.__IS_DEV_SOURCE__ && !isDev && !document.querySelector('script[src*="index-"]')) {
+            var link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.crossOrigin = 'anonymous';
+            link.href = './assets/app-style.css';
+            document.head.appendChild(link);
+
+            var script = document.createElement('script');
+            script.type = 'module';
+            script.crossOrigin = 'anonymous';
+            script.src = './assets/app-entry.js';
+            document.head.appendChild(script);
+          }
         } catch (e) {
           console.warn('Navigation normalizer error:', e);
         }
       })();
     </script>
-    <script type="module" crossorigin src="./assets/index-DYCwCxCK.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DaYz4ARJ.css">
+    <script type="module" crossorigin src="./assets/index-WiS-QaJE.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BjJXEqsq.css">
   </head>
   <body class="bg-[#080d1a] text-slate-100 antialiased font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
     <div id="root">
@@ -90,6 +96,10 @@
       // If any runtime error or asset loading failure occurs before React takes over,
       // provides an interactive recovery console instead of a blank screen.
       window.addEventListener('error', function(event) {
+        // In static hosting environments, /src/main.tsx is uncompiled while app-entry.js loads the bundle. Ignore main.tsx errors.
+        if (event && ((event.filename && event.filename.includes('main.tsx')) || (event.message && event.message.includes('main.tsx')))) {
+          return;
+        }
         var statusEl = document.getElementById('boot-status-text');
         var loaderEl = document.getElementById('app-boot-loader');
         if (statusEl && loaderEl) {

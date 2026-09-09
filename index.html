@@ -42,11 +42,9 @@
             }
           }
 
-          // Universal Production Loader:
-          // If served statically (GitHub Pages root, custom domain, static host) where Vite dev server is not active,
-          // load the compiled production CSS and JS bundle automatically.
+          // Universal Production Loader fallback (only if unbundled HTML is served directly without Vite)
           var isDev = l.hostname === 'localhost' || l.hostname === '127.0.0.1' || l.port === '3000';
-          if (!isDev) {
+          if (window.__IS_DEV_SOURCE__ && !isDev && !document.querySelector('script[src*="index-"]')) {
             var link = document.createElement('link');
             link.rel = 'stylesheet';
             link.crossOrigin = 'anonymous';

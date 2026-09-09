@@ -5,15 +5,23 @@ import {
   DisplayType, 
   RelayMode, 
   RelayLogic,
-  PinConflict 
+  PinConflict,
+  CloudProtocol 
 } from '../types';
 import { 
   HARDWARE_BOARDS, 
   DISPLAY_MODELS, 
   validateHardwareProfile,
   generatePinsHeader,
-  generateRelayControllerCpp
+  generateRelayControllerCpp,
+  DEFAULT_WIFI_CONFIG,
+  DEFAULT_CLOUD_CONFIG
 } from '../data/hardwareProfiles';
+import {
+  generateUnifiedFirmwareIno,
+  generatePlatformIoIni,
+  generateConfigHeader
+} from '../data/firmwareGenerator';
 import { 
   Cpu, 
   Mic, 
@@ -29,7 +37,18 @@ import {
   Zap, 
   ShieldAlert, 
   Info,
-  Power
+  Power,
+  Wifi,
+  Radio,
+  Globe,
+  Code,
+  Check,
+  Copy,
+  Send,
+  Eye,
+  EyeOff,
+  Terminal,
+  ExternalLink
 } from 'lucide-react';
 
 interface PinConfiguratorProps {
@@ -43,9 +62,11 @@ export const PinConfigurator: React.FC<PinConfiguratorProps> = ({
   onChangeProfile,
   onOpenUsbFlasher
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'mic' | 'amp' | 'display' | 'relays' | 'controls'>('mic');
+  const [activeSubTab, setActiveSubTab] = useState<'mic' | 'amp' | 'display' | 'relays' | 'controls' | 'wifi' | 'cloud' | 'fullcode'>('mic');
   const [showCodePreview, setShowCodePreview] = useState(false);
+  const [previewFormat, setPreviewFormat] = useState<'ino' | 'pins' | 'config' | 'ini'>('ino');
   const [copiedCode, setCopiedCode] = useState(false);
+  const [showWifiPassword, setShowWifiPassword] = useState(false);
 
   const boardSpec = HARDWARE_BOARDS[profile.variant];
   const conflicts = validateHardwareProfile(profile);
@@ -164,6 +185,81 @@ export const PinConfigurator: React.FC<PinConfiguratorProps> = ({
     });
   };
 
+  // Update Wi-Fi Configuration
+  const updateWifi = (partial: Partial<CustomHardwareProfile['wifi']>) => {
+    onChangeProfile({
+      ...profile,
+      wifi: { ...(profile.wifi || DEFAULT_WIFI_CONFIG), ...partial }
+    });
+  };
+
+  // Update Cloud Protocols
+  const updateCloud = (partial: Partial<CustomHardwareProfile['cloudIntegration']>) => {
+    onChangeProfile({
+      ...profile,
+      cloudIntegration: { ...(profile.cloudIntegration || DEFAULT_CLOUD_CONFIG), ...partial }
+    });
+  };
+
+  const updateWebhook = (partial: Partial<CustomHardwareProfile['cloudIntegration']['webhook']>) => {
+    const curr = profile.cloudIntegration || DEFAULT_CLOUD_CONFIG;
+    onChangeProfile({
+      ...profile,
+      cloudIntegration: {
+        ...curr,
+        webhook: { ...curr.webhook, ...partial }
+      }
+    });
+  };
+
+  const updateMqtt = (partial: Partial<CustomHardwareProfile['cloudIntegration']['mqtt']>) => {
+    const curr = profile.cloudIntegration || DEFAULT_CLOUD_CONFIG;
+    onChangeProfile({
+      ...profile,
+      cloudIntegration: {
+        ...curr,
+        mqtt: { ...curr.mqtt, ...partial }
+      }
+    });
+  };
+
+  const getActiveCode = () => {
+    switch (previewFormat) {
+      case 'ino':
+        return generateUnifiedFirmwareIno(profile);
+      case 'pins':
+        return generatePinsHeader(profile);
+      case 'config':
+        return generateConfigHeader(profile);
+      case 'ini':
+        return generatePlatformIoIni(profile);
+    }
+  };
+
+  const handleDownloadActiveFile = () => {
+    let filename = `pins_${profile.variant.toLowerCase()}.h`;
+    let type = 'text/x-c';
+    if (previewFormat === 'ino') {
+      filename = `explore_ai_${profile.variant.toLowerCase()}_all_in_one.ino`;
+    } else if (previewFormat === 'config') {
+      filename = `config.h`;
+    } else if (previewFormat === 'ini') {
+      filename = `platformio.ini`;
+      type = 'text/plain';
+    }
+
+    const code = getActiveCode();
+    const blob = new Blob([code], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleDownloadPinsHeader = () => {
     const code = generatePinsHeader(profile);
     const blob = new Blob([code], { type: 'text/x-c' });
@@ -177,8 +273,21 @@ export const PinConfigurator: React.FC<PinConfiguratorProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadIno = () => {
+    const code = generateUnifiedFirmwareIno(profile);
+    const blob = new Blob([code], { type: 'text/x-c' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `explore_ai_${profile.variant.toLowerCase()}_all_in_one.ino`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const copyGeneratedCode = () => {
-    const code = generatePinsHeader(profile);
+    const code = getActiveCode();
     navigator.clipboard.writeText(code);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
@@ -223,15 +332,16 @@ export const PinConfigurator: React.FC<PinConfiguratorProps> = ({
               className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-cyan-300 hover:text-white border border-cyan-500/30 text-xs font-semibold flex items-center gap-1.5 transition"
             >
               <FileCode className="w-4 h-4 text-cyan-400" />
-              <span>{showCodePreview ? 'Hide C++ Code' : 'Preview pins.h'}</span>
+              <span>{showCodePreview ? 'Hide Code' : 'Live Firmware Code'}</span>
             </button>
 
             <button
-              onClick={handleDownloadPinsHeader}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition"
+              onClick={handleDownloadIno}
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition"
+              title="Download full unified Arduino sketch (.ino) with Wi-Fi, MQTT & Webhooks"
             >
               <Download className="w-4 h-4 text-emerald-400" />
-              <span>Export pins.h</span>
+              <span>Download .INO</span>
             </button>
 
             <button
@@ -331,22 +441,69 @@ export const PinConfigurator: React.FC<PinConfiguratorProps> = ({
       {/* Code Preview Drawer if opened */}
       {showCodePreview && (
         <div className="bg-slate-950 border border-cyan-500/30 rounded-2xl p-5 shadow-2xl space-y-3 font-mono text-xs">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <div className="flex items-center gap-2 text-cyan-400 font-semibold">
-              <FileCode className="w-4 h-4" />
-              <span>Tailored C++ Header (firmware/include/pins.h)</span>
-            </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-800 gap-3">
             <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-white font-bold">Auto-Synced Firmware Code</span>
+              <span className="text-slate-500 font-normal">| {profile.boardName}</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Format Switcher */}
+              <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800">
+                <button
+                  onClick={() => setPreviewFormat('ino')}
+                  className={`px-2.5 py-1 rounded-lg text-xs transition ${
+                    previewFormat === 'ino' ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  All-in-One .INO
+                </button>
+                <button
+                  onClick={() => setPreviewFormat('pins')}
+                  className={`px-2.5 py-1 rounded-lg text-xs transition ${
+                    previewFormat === 'pins' ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  pins.h
+                </button>
+                <button
+                  onClick={() => setPreviewFormat('config')}
+                  className={`px-2.5 py-1 rounded-lg text-xs transition ${
+                    previewFormat === 'config' ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  config.h
+                </button>
+                <button
+                  onClick={() => setPreviewFormat('ini')}
+                  className={`px-2.5 py-1 rounded-lg text-xs transition ${
+                    previewFormat === 'ini' ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  platformio.ini
+                </button>
+              </div>
+
               <button
                 onClick={copyGeneratedCode}
-                className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1.5 transition"
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1.5 transition"
               >
-                <span>{copiedCode ? 'Copied!' : 'Copy Code'}</span>
+                {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedCode ? 'Copied!' : 'Copy'}</span>
+              </button>
+
+              <button
+                onClick={handleDownloadActiveFile}
+                className="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs flex items-center gap-1.5 transition"
+              >
+                <Download className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Export File</span>
               </button>
             </div>
           </div>
-          <pre className="p-4 bg-slate-900 rounded-xl overflow-x-auto text-cyan-200/90 text-[11px] leading-relaxed max-h-80 overflow-y-auto">
-            {generatePinsHeader(profile)}
+          <pre className="p-4 bg-slate-900 rounded-xl overflow-x-auto text-cyan-200/90 text-[11px] leading-relaxed max-h-96 overflow-y-auto">
+            {getActiveCode()}
           </pre>
         </div>
       )}
@@ -416,6 +573,50 @@ export const PinConfigurator: React.FC<PinConfiguratorProps> = ({
         >
           <Power className="w-4 h-4 text-cyan-400" />
           <span>Buttons & Status LED</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('wifi')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+            activeSubTab === 'wifi'
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+          }`}
+        >
+          <Wifi className="w-4 h-4 text-cyan-400" />
+          <span>Wi-Fi Connectivity</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('cloud')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+            activeSubTab === 'cloud'
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+          }`}
+        >
+          <Radio className="w-4 h-4 text-cyan-400" />
+          <span>Webhook & MQTT</span>
+          {profile.cloudIntegration?.protocol !== 'none' && (
+            <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-mono uppercase">
+              {profile.cloudIntegration?.protocol || 'Both'}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('fullcode')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+            activeSubTab === 'fullcode'
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+          }`}
+        >
+          <Code className="w-4 h-4 text-emerald-400" />
+          <span>Full Firmware Code</span>
+          <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 text-[10px] font-mono">
+            LIVE SYNC
+          </span>
         </button>
       </div>
 
@@ -1184,6 +1385,468 @@ export const PinConfigurator: React.FC<PinConfiguratorProps> = ({
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Sub-Tab 6: Wi-Fi Connectivity Configuration */}
+      {activeSubTab === 'wifi' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                <Wifi className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Wi-Fi Station & Network Configuration</h3>
+                <p className="text-xs text-slate-400">Hardcoded primary credentials and emergency SoftAP captive portal fallback</p>
+              </div>
+            </div>
+
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-950 border border-slate-800 text-[11px] text-cyan-400 font-mono">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Live Synced to config.h</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Primary Station Credentials */}
+            <div className="p-5 rounded-xl bg-slate-950 border border-slate-800 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                  <span>Primary Wi-Fi Network (Station Mode)</span>
+                </h4>
+                <span className="text-[10px] text-slate-500 font-mono">2.4GHz Only</span>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                  Network SSID (Name):
+                </label>
+                <input
+                  type="text"
+                  value={(profile.wifi || DEFAULT_WIFI_CONFIG).ssid}
+                  onChange={(e) => updateWifi({ ssid: e.target.value })}
+                  placeholder="e.g. Home_Network_2.4G"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                  Wi-Fi Password:
+                </label>
+                <div className="relative">
+                  <input
+                    type={showWifiPassword ? 'text' : 'password'}
+                    value={(profile.wifi || DEFAULT_WIFI_CONFIG).password}
+                    onChange={(e) => updateWifi({ password: e.target.value })}
+                    placeholder="Enter network password (or leave empty if open)"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-500 pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowWifiPassword(!showWifiPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                  >
+                    {showWifiPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <div>
+                  <label className="text-[11px] text-slate-400 block mb-1">
+                    Connect Timeout (sec):
+                  </label>
+                  <input
+                    type="number"
+                    min="5"
+                    max="60"
+                    value={(profile.wifi || DEFAULT_WIFI_CONFIG).connectTimeoutSec}
+                    onChange={(e) => updateWifi({ connectTimeoutSec: parseInt(e.target.value, 10) || 15 })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                  />
+                </div>
+
+                <div className="flex flex-col justify-end">
+                  <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-900 border border-slate-800 cursor-pointer text-xs text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={(profile.wifi || DEFAULT_WIFI_CONFIG).autoReconnect}
+                      onChange={(e) => updateWifi({ autoReconnect: e.target.checked })}
+                      className="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                    />
+                    <span>Auto-Reconnect</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Fallback SoftAP Provisioning Credentials */}
+            <div className="p-5 rounded-xl bg-slate-950 border border-slate-800 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <span>SoftAP Captive Portal (Emergency Fallback)</span>
+                </h4>
+                <span className="text-[10px] text-amber-400/80 font-mono">192.168.4.1</span>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                  Fallback SoftAP SSID:
+                </label>
+                <input
+                  type="text"
+                  value={(profile.wifi || DEFAULT_WIFI_CONFIG).apSsid}
+                  onChange={(e) => updateWifi({ apSsid: e.target.value })}
+                  placeholder="Explore-AI-Assistant"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-amber-300 font-mono focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                  SoftAP Password (Optional):
+                </label>
+                <input
+                  type="text"
+                  value={(profile.wifi || DEFAULT_WIFI_CONFIG).apPassword}
+                  onChange={(e) => updateWifi({ apPassword: e.target.value })}
+                  placeholder="Leave empty for open onboarding hotspot"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-amber-300 font-mono focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {/* IP Assignment Mode */}
+              <div className="pt-2">
+                <label className="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-800 cursor-pointer text-xs">
+                  <div>
+                    <span className="font-semibold text-white">Enable Static IP Assignment</span>
+                    <p className="text-[11px] text-slate-400">Bypass DHCP for fixed IP addressing</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={(profile.wifi || DEFAULT_WIFI_CONFIG).staticIpEnabled}
+                    onChange={(e) => updateWifi({ staticIpEnabled: e.target.checked })}
+                    className="w-4 h-4 rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                  />
+                </label>
+              </div>
+
+              {(profile.wifi || DEFAULT_WIFI_CONFIG).staticIpEnabled && (
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div>
+                    <label className="text-[10px] font-mono text-slate-400 block mb-1">Static IP:</label>
+                    <input
+                      type="text"
+                      value={(profile.wifi || DEFAULT_WIFI_CONFIG).staticIp}
+                      onChange={(e) => updateWifi({ staticIp: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-cyan-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-mono text-slate-400 block mb-1">Gateway IP:</label>
+                    <input
+                      type="text"
+                      value={(profile.wifi || DEFAULT_WIFI_CONFIG).gateway}
+                      onChange={(e) => updateWifi({ gateway: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-cyan-300"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-Tab 7: Webhook & MQTT Integration Configuration */}
+      {activeSubTab === 'cloud' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800 gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                <Radio className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Cloud Protocols: Webhook & MQTT</h3>
+                <p className="text-xs text-slate-400">Event-driven HTTP Webhooks and bidirectional MQTT broker communication</p>
+              </div>
+            </div>
+
+            {/* Protocol Mode Selector */}
+            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+              {(['both', 'mqtt', 'webhook', 'none'] as CloudProtocol[]).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => updateCloud({ protocol: mode })}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition ${
+                    (profile.cloudIntegration || DEFAULT_CLOUD_CONFIG).protocol === mode
+                      ? 'bg-cyan-500/20 text-cyan-300 shadow-sm border border-cyan-500/30'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {mode === 'both' ? 'Both (Full)' : mode}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left Column: Webhook Settings */}
+            <div className={`p-5 rounded-xl bg-slate-950 border transition space-y-4 ${
+              (profile.cloudIntegration?.protocol === 'webhook' || profile.cloudIntegration?.protocol === 'both')
+                ? 'border-cyan-500/30'
+                : 'border-slate-800 opacity-60'
+            }`}>
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-cyan-400" />
+                  <span>HTTP Webhook Dispatcher</span>
+                </h4>
+                <label className="flex items-center gap-2 text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={(profile.cloudIntegration || DEFAULT_CLOUD_CONFIG).webhook.enabled}
+                    onChange={(e) => updateWebhook({ enabled: e.target.checked })}
+                    className="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                  />
+                  <span>Enabled</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                  Webhook Target URL:
+                </label>
+                <input
+                  type="url"
+                  value={(profile.cloudIntegration || DEFAULT_CLOUD_CONFIG).webhook.endpointUrl}
+                  onChange={(e) => updateWebhook({ endpointUrl: e.target.value })}
+                  placeholder="https://webhook.site/your-uuid or https://homeassistant.local/api/webhook/esp32"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                  Authorization Header / Token (Optional):
+                </label>
+                <input
+                  type="text"
+                  value={(profile.cloudIntegration || DEFAULT_CLOUD_CONFIG).webhook.authToken}
+                  onChange={(e) => updateWebhook({ authToken: e.target.value })}
+                  placeholder="Bearer your_secret_token_123"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div className="space-y-2 pt-2">
+                <span className="text-[11px] font-semibold text-slate-300 block">Dispatch Triggers:</span>
+                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={(profile.cloudIntegration || DEFAULT_CLOUD_CONFIG).webhook.triggerOnRelay}
+                    onChange={(e) => updateWebhook({ triggerOnRelay: e.target.checked })}
+                    className="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                  />
+                  <span>Trigger POST on Relay State Changes (CH1 - CH{profile.relays.channels.length || 4})</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={(profile.cloudIntegration || DEFAULT_CLOUD_CONFIG).webhook.triggerOnVoice}
+                    onChange={(e) => updateWebhook({ triggerOnVoice: e.target.checked })}
+                    className="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                  />
+                  <span>Trigger POST on Voice Assistant Queries</span>
+                </label>
+              </div>
+
+              {/* Sample Webhook Payload */}
+              <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 font-mono text-[11px] text-slate-400 space-y-1">
+                <span className="text-slate-500 text-[10px] uppercase">Example JSON Payload:</span>
+                <pre className="text-cyan-300 overflow-x-auto">
+{`{
+  "device_name": "${profile.boardName}",
+  "event": "relay_toggle",
+  "channel": 1,
+  "state": "ON",
+  "ip": "192.168.1.142",
+  "timestamp": 184502
+}`}
+                </pre>
+              </div>
+            </div>
+
+            {/* Right Column: MQTT Broker Settings */}
+            <div className={`p-5 rounded-xl bg-slate-950 border transition space-y-4 ${
+              (profile.cloudIntegration?.protocol === 'mqtt' || profile.cloudIntegration?.protocol === 'both')
+                ? 'border-cyan-500/30'
+                : 'border-slate-800 opacity-60'
+            }`}>
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-emerald-400" />
+                  <span>MQTT Broker & Topics</span>
+                </h4>
+                <label className="flex items-center gap-2 text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={(profile.cloudIntegration || DEFAULT_CLOUD_CONFIG).mqtt.enabled}
+                    onChange={(e) => updateMqtt({ enabled: e.target.checked })}
+                    className="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                  />
+                  <span>Enabled</span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                    Broker Host / IP:
+                  </label>
+                  <input
+                    type="text"
+                    value={(profile.cloudIntegration || DEFAULT_CLOUD_CONFIG).mqtt.brokerHost}
+                    onChange={(e) => updateMqtt({ brokerHost: e.target.value })}
+                    placeholder="broker.hivemq.com or 192.168.1.100"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                    Port:
+                  </label>
+                  <input
+                    type="number"
+                    value={(profile.cloudIntegration || DEFAULT_CLOUD_CONFIG).mqtt.brokerPort}
+                    onChange={(e) => updateMqtt({ brokerPort: parseInt(e.target.value, 10) || 1883 })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                  Base MQTT Topic:
+                </label>
+                <input
+                  type="text"
+                  value={(profile.cloudIntegration || DEFAULT_CLOUD_CONFIG).mqtt.baseTopic}
+                  onChange={(e) => updateMqtt({ baseTopic: e.target.value })}
+                  placeholder="explore_ai/esp32"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-emerald-300 font-mono focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-slate-400 block mb-1">Username (Optional):</label>
+                  <input
+                    type="text"
+                    value={(profile.cloudIntegration || DEFAULT_CLOUD_CONFIG).mqtt.username}
+                    onChange={(e) => updateMqtt({ username: e.target.value })}
+                    placeholder="user"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-400 block mb-1">Password (Optional):</label>
+                  <input
+                    type="password"
+                    value={(profile.cloudIntegration || DEFAULT_CLOUD_CONFIG).mqtt.password}
+                    onChange={(e) => updateMqtt({ password: e.target.value })}
+                    placeholder="pass"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Subscribed & Published Topics */}
+              <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 font-mono text-[11px] text-slate-400 space-y-1.5">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-slate-500 uppercase">Subscribed Command Topic:</span>
+                  <span className="text-emerald-400 font-bold">INBOUND</span>
+                </div>
+                <div className="text-cyan-300 bg-slate-950 px-2 py-1 rounded">
+                  {(profile.cloudIntegration || DEFAULT_CLOUD_CONFIG).mqtt.baseTopic}/relay/set
+                </div>
+                <p className="text-[10px] text-slate-500 leading-tight">
+                  Publish <code className="text-slate-300">{"{\"channel\": 1, \"state\": \"ON\"}"}</code> or <code className="text-slate-300">"1:ON"</code> to toggle relays remotely.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-Tab 8: Full Generated Firmware Code Studio */}
+      {activeSubTab === 'fullcode' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800 gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                <h3 className="text-base font-bold text-white">Full Generated Firmware Studio</h3>
+                <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[10px] font-mono">
+                  LIVE COMPILATION PREPARED
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Every value in your PIN configuration, Wi-Fi network, and Webhook/MQTT parameters is automatically combined with all libraries.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={copyGeneratedCode}
+                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition"
+              >
+                {copiedCode ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                <span>{copiedCode ? 'Copied Full Code!' : 'Copy Code'}</span>
+              </button>
+
+              <button
+                onClick={handleDownloadIno}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition"
+              >
+                <Download className="w-4 h-4 text-slate-950" />
+                <span>Download .INO Sketch</span>
+              </button>
+            </div>
+          </div>
+
+          {/* File Tab Switcher */}
+          <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-800 pb-2">
+            {[
+              { id: 'ino', label: 'All-in-One .INO (Combined Libraries)', badge: 'Arduino IDE' },
+              { id: 'pins', label: 'pins.h (Configured GPIOs)', badge: 'PlatformIO' },
+              { id: 'config', label: 'config.h (Wi-Fi & MQTT)', badge: 'PlatformIO' },
+              { id: 'ini', label: 'platformio.ini (Dependencies)', badge: 'PlatformIO' }
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setPreviewFormat(f.id as any)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+                  previewFormat === f.id
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-950'
+                }`}
+              >
+                <span>{f.label}</span>
+                <span className="text-[10px] opacity-70 font-mono">[{f.badge}]</span>
+              </button>
+            ))}
+          </div>
+
+          <pre className="p-4 bg-slate-950 rounded-xl overflow-x-auto text-cyan-200/90 text-[11px] font-mono leading-relaxed max-h-[500px] overflow-y-auto border border-slate-800">
+            {getActiveCode()}
+          </pre>
         </div>
       )}
 

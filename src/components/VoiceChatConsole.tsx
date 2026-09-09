@@ -28,7 +28,12 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
     }
   ]);
   const [input, setInput] = useState('');
-  const [isContinuousMode, setIsContinuousMode] = useState<boolean>(false);
+  const [micOption, setMicOption] = useState<'click_to_ask' | 'always_on'>(
+    settings.voiceMode === 'continuous' ? 'always_on' : 'click_to_ask'
+  );
+  const [isAlwaysOnActive, setIsAlwaysOnActive] = useState<boolean>(
+    settings.voiceMode === 'continuous'
+  );
   const [isMicCapturing, setIsMicCapturing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -38,7 +43,8 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<any>(null);
   const isRecognitionActiveRef = useRef(false);
-  const isContinuousModeRef = useRef(isContinuousMode);
+  const micOptionRef = useRef<'click_to_ask' | 'always_on'>(micOption);
+  const isAlwaysOnActiveRef = useRef<boolean>(isAlwaysOnActive);
   const isSpeakingRef = useRef(isSpeaking);
   const isProcessingRef = useRef(isProcessing);
   const wakeWordAwakenedRef = useRef(false);
@@ -54,8 +60,22 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
   }, [input]);
 
   useEffect(() => {
-    isContinuousModeRef.current = isContinuousMode;
-  }, [isContinuousMode]);
+    micOptionRef.current = micOption;
+  }, [micOption]);
+
+  useEffect(() => {
+    isAlwaysOnActiveRef.current = isAlwaysOnActive;
+  }, [isAlwaysOnActive]);
+
+  useEffect(() => {
+    if (settings.voiceMode === 'continuous') {
+      setMicOption('always_on');
+      setIsAlwaysOnActive(true);
+    } else if (settings.voiceMode === 'push_to_talk') {
+      setMicOption('click_to_ask');
+      setIsAlwaysOnActive(false);
+    }
+  }, [settings.voiceMode]);
 
   useEffect(() => {
     isSpeakingRef.current = isSpeaking;
@@ -265,6 +285,20 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
           wakeWordAwakenedRef.current = false;
           onOledStateChange('PROCESSING');
           handleSendRef.current(undefined, pendingQuery);
+          return;
+        }
+
+        // Always-On Option: Continuous listening loop!
+        // When recognition ends due to browser timeout or silence, auto-restart so mic is always active!
+        if (micOptionRef.current === 'always_on' && isAlwaysOnActiveRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
+          if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+          restartTimeoutRef.current = setTimeout(() => {
+            if (micOptionRef.current === 'always_on' && isAlwaysOnActiveRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
+              safeStartRecognition();
+            }
+          }, 150);
+        } else if (micOptionRef.current === 'click_to_ask' && !isProcessingRef.current && !isSpeakingRef.current) {
+          onOledStateChange('READY');
         }
       };
 
@@ -274,6 +308,16 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
         }
         isRecognitionActiveRef.current = false;
         setIsMicCapturing(false);
+
+        // Auto-restart in Always-On mode if terminated due to no-speech timeout
+        if (micOptionRef.current === 'always_on' && isAlwaysOnActiveRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
+          if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+          restartTimeoutRef.current = setTimeout(() => {
+            if (micOptionRef.current === 'always_on' && isAlwaysOnActiveRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
+              safeStartRecognition();
+            }
+          }, 250);
+        }
       };
 
       recognitionRef.current = recognition;
@@ -284,17 +328,17 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
     };
   }, [settings.language, safeStartRecognition, safeStopRecognition, onOledStateChange]);
 
-  const toggleContinuousMode = () => {
-    const next = !isContinuousMode;
-    setIsContinuousMode(next);
-    isContinuousModeRef.current = next;
+  const selectMicOption = (option: 'click_to_ask' | 'always_on') => {
+    setMicOption(option);
+    micOptionRef.current = option;
 
-    if (onUpdateSettings) {
-      onUpdateSettings({ voiceMode: next ? 'wake_word' : 'push_to_talk' });
-    }
-
-    if (next) {
-      triggerWakeNotice('⚡ Continuous Voice Enabled: Mic is active');
+    if (option === 'always_on') {
+      setIsAlwaysOnActive(true);
+      isAlwaysOnActiveRef.current = true;
+      if (onUpdateSettings) {
+        onUpdateSettings({ voiceMode: 'continuous' });
+      }
+      triggerWakeNotice('🟢 Always-On Mic Activated: Keeps listening & talking continuously in hands-free loop!');
       wakeWordService.playWakeChime();
       ttsService.stop();
       setIsSpeaking(false);
@@ -302,8 +346,13 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
         safeStartRecognition();
       }, 150);
     } else {
+      setIsAlwaysOnActive(false);
+      isAlwaysOnActiveRef.current = false;
+      if (onUpdateSettings) {
+        onUpdateSettings({ voiceMode: 'push_to_talk' });
+      }
       safeStopRecognition();
-      triggerWakeNotice('Continuous Voice Disabled: Mic will turn on only when you click it');
+      triggerWakeNotice('🎙️ Click to Ask Activated: Mic stays idle until you click it to ask, then stops.');
       onOledStateChange('READY');
     }
   };
@@ -314,29 +363,49 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
       return;
     }
 
-    if (isMicCapturing || isRecognitionActiveRef.current) {
-      // User clicked mic to finish question or turn off: immediately send whatever was captured!
-      safeStopRecognition();
-      setIsListeningToFullQuestion(false);
-      const targetQuery = (currentSpeechCandidateRef.current || inputRef.current || input).trim();
-      currentSpeechCandidateRef.current = '';
-      if (targetQuery.length >= 2) {
-        handleSendRef.current(undefined, targetQuery);
-      } else {
-        triggerWakeNotice('Microphone turned off');
+    if (micOption === 'always_on') {
+      // In Always-On mode, clicking toggles pause/resume of continuous listening
+      if (isAlwaysOnActive && (isMicCapturing || isRecognitionActiveRef.current)) {
+        safeStopRecognition();
+        setIsAlwaysOnActive(false);
+        isAlwaysOnActiveRef.current = false;
+        triggerWakeNotice('⏸️ Always-On Mic Paused — Click to resume continuous listening');
         onOledStateChange('READY');
+      } else {
+        setIsAlwaysOnActive(true);
+        isAlwaysOnActiveRef.current = true;
+        ttsService.stop();
+        setIsSpeaking(false);
+        wakeWordService.playWakeChime();
+        triggerWakeNotice('🟢 Always-On Mic Resumed — Listening continuously...');
+        safeStartRecognition();
       }
     } else {
-      // Turn microphone on on-demand for asking a question
-      ttsService.stop();
-      setIsSpeaking(false);
-      wakeWordService.playWakeChime();
-      triggerWakeNotice('🎤 Microphone ON — Please speak your question now...');
-      setInput('');
-      inputRef.current = '';
-      currentSpeechCandidateRef.current = '';
-      wakeWordAwakenedRef.current = true;
-      safeStartRecognition();
+      // In Click-to-Ask (Idle) mode:
+      if (isMicCapturing || isRecognitionActiveRef.current) {
+        // User clicked mic while listening to finish & send question
+        safeStopRecognition();
+        setIsListeningToFullQuestion(false);
+        const targetQuery = (currentSpeechCandidateRef.current || inputRef.current || input).trim();
+        currentSpeechCandidateRef.current = '';
+        if (targetQuery.length >= 2) {
+          handleSendRef.current(undefined, targetQuery);
+        } else {
+          triggerWakeNotice('Microphone stopped (returned to idle)');
+          onOledStateChange('READY');
+        }
+      } else {
+        // User clicked idle mic to activate and ask
+        ttsService.stop();
+        setIsSpeaking(false);
+        wakeWordService.playWakeChime();
+        triggerWakeNotice('🎤 Microphone Activated — Speak your question now (will stop after answering)...');
+        setInput('');
+        inputRef.current = '';
+        currentSpeechCandidateRef.current = '';
+        wakeWordAwakenedRef.current = true;
+        safeStartRecognition();
+      }
     }
   };
 
@@ -395,8 +464,29 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
       ttsService.startStreamingSession(() => {
         setIsSpeaking(false);
         isSpeakingRef.current = false;
-        onOledStateChange('READY');
-        // Microphone remains safely OFF after answering question (only turns on when user clicks to ask)
+
+        if (micOptionRef.current === 'always_on' && isAlwaysOnActiveRef.current) {
+          // ALWAYS-ON CONVERSATION:
+          // Keeps listening and talking in a continuous loop!
+          // As soon as the assistant finishes speaking, automatically resume listening!
+          setTimeout(() => {
+            if (micOptionRef.current === 'always_on' && isAlwaysOnActiveRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
+              wakeWordAwakenedRef.current = false;
+              currentSpeechCandidateRef.current = '';
+              inputRef.current = '';
+              setInput('');
+              safeStartRecognition();
+              onOledStateChange('LISTENING');
+              triggerWakeNotice('🎤 Continuous Listening: Speak your next question anytime...');
+            }
+          }, 350);
+        } else {
+          // CLICK-TO-ASK (IDLE) OPTION:
+          // Listen and talk, otherwise keep stopping (stays idle)!
+          safeStopRecognition();
+          onOledStateChange('READY');
+          triggerWakeNotice('✅ Answer complete. Mic is idle — Click to ask another question.');
+        }
       });
 
       const response = await aiService.streamResponse(
@@ -588,7 +678,12 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-bold shadow-sm shadow-rose-500/20 animate-pulse">
               <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping"></span>
               <Mic className="w-3.5 h-3.5 text-rose-400" />
-              <span>Microphone ON — Listening...</span>
+              <span>{micOption === 'always_on' ? 'Always-On — Listening...' : 'Microphone Active — Listening...'}</span>
+            </div>
+          ) : micOption === 'always_on' && !isAlwaysOnActive ? (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-950/60 border border-amber-700/50 text-amber-300 text-xs font-medium">
+              <MicOff className="w-3.5 h-3.5 text-amber-400" />
+              <span>Always-On: Paused</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-850 border border-slate-750 text-slate-400 text-xs font-medium">
@@ -649,66 +744,97 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
         )}
       </div>
 
-      {/* Wake Word Bar with "Hey Explorer", "Hi Explorer", "Hello Explorer" Triggers */}
-      <div className="px-4 py-2 bg-slate-950/70 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <div className={`w-2.5 h-2.5 rounded-full ${isContinuousMode ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs font-bold text-white">Wake Triggers:</span>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => triggerWakeTriggerChip('Hey Explorer')}
-                className="text-xs font-mono font-semibold px-2 py-0.5 rounded-md bg-emerald-950/70 hover:bg-emerald-900 text-emerald-300 border border-emerald-600/50 transition"
-                title="Click to awaken with 'Hey Explorer'"
-              >
-                "Hey Explorer"
-              </button>
-              <button
-                type="button"
-                onClick={() => triggerWakeTriggerChip('Hi Explorer')}
-                className="text-xs font-mono font-semibold px-2 py-0.5 rounded-md bg-cyan-950/70 hover:bg-cyan-900 text-cyan-300 border border-cyan-600/50 transition"
-                title="Click to awaken with 'Hi Explorer'"
-              >
-                "Hi Explorer"
-              </button>
-              <button
-                type="button"
-                onClick={() => triggerWakeTriggerChip('Hello Explorer')}
-                className="text-xs font-mono font-semibold px-2 py-0.5 rounded-md bg-indigo-950/70 hover:bg-indigo-900 text-indigo-300 border border-indigo-600/50 transition"
-                title="Click to awaken with 'Hello Explorer'"
-              >
-                "Hello Explorer"
-              </button>
-            </div>
+      {/* Dual Microphone Interaction Mode Bar & Wake Word Triggers */}
+      <div className="px-4 py-2.5 bg-slate-950/85 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
+        {/* Microphone Options: Click to Ask vs Always-On */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+            <Mic className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Mic Mode:</span>
+          </span>
+
+          <div className="flex items-center bg-slate-900 border border-slate-750 rounded-xl p-1 gap-1">
+            {/* Option 1: Click to Ask (Idle Mode) */}
+            <button
+              type="button"
+              onClick={() => selectMicOption('click_to_ask')}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+                micOption === 'click_to_ask'
+                  ? 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+              title="Idle until clicked. Listens, answers, then automatically stops."
+            >
+              <Mic className="w-3.5 h-3.5" />
+              <span>Click to Ask (Idle)</span>
+              {micOption === 'click_to_ask' && <Check className="w-3 h-3 stroke-[3]" />}
+            </button>
+
+            {/* Option 2: Always-On Microphone (Continuous) */}
+            <button
+              type="button"
+              onClick={() => selectMicOption('always_on')}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+                micOption === 'always_on'
+                  ? 'bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+              title="Microphone is always on. Keeps listening & talking continuously in a hands-free loop."
+            >
+              <Radio className={`w-3.5 h-3.5 ${micOption === 'always_on' ? 'animate-pulse text-slate-950' : ''}`} />
+              <span>Always-On Mic (Continuous)</span>
+              {micOption === 'always_on' && <Check className="w-3 h-3 stroke-[3]" />}
+            </button>
           </div>
+
+          {/* Always-on Pause/Resume Helper if Always-on selected */}
+          {micOption === 'always_on' && (
+            <button
+              type="button"
+              onClick={toggleMic}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border ${
+                isAlwaysOnActive
+                  ? 'bg-emerald-950/70 text-emerald-300 border-emerald-600/50 hover:bg-emerald-900'
+                  : 'bg-amber-950/70 text-amber-300 border-amber-600/50 hover:bg-amber-900'
+              }`}
+              title={isAlwaysOnActive ? 'Continuous loop is active — click to pause' : 'Continuous loop is paused — click to resume'}
+            >
+              <span className={`w-2 h-2 rounded-full ${isAlwaysOnActive ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'}`} />
+              <span>{isAlwaysOnActive ? 'Loop: LISTENING' : 'Loop: PAUSED'}</span>
+            </button>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={toggleContinuousMode}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border ${
-              isContinuousMode
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                : 'bg-slate-850 text-slate-400 border-slate-700 hover:bg-slate-800 hover:text-white'
-            }`}
-            title={isContinuousMode ? 'Continuous conversation is active — click to pause' : 'Click to activate continuous always-listening voice'}
-          >
-            <Radio className={`w-3.5 h-3.5 ${isContinuousMode ? 'text-emerald-400 animate-pulse' : 'text-slate-400'}`} />
-            <span>{isContinuousMode ? 'Continuous: ACTIVE' : 'Continuous: PAUSED'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => simulateWakeWordQuery('Hey Explorer', 'what is the speed of light?')}
-            className="px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-medium flex items-center gap-1 transition shadow-sm"
-            title="Simulate speaking 'Hey Explorer, what is the speed of light?'"
-          >
-            <Zap className="w-3 h-3 text-cyan-400" />
-            <span className="hidden sm:inline">Test "Hey Explorer"</span>
-            <span className="sm:hidden">Test</span>
-          </button>
+        {/* Wake Triggers & Quick Simulation */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] font-semibold text-slate-400 hidden lg:inline">Wake Triggers:</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => triggerWakeTriggerChip('Hey Explorer')}
+              className="text-xs font-mono font-medium px-2 py-0.5 rounded-md bg-slate-850 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 transition"
+              title="Click to awaken with 'Hey Explorer'"
+            >
+              "Hey Explorer"
+            </button>
+            <button
+              type="button"
+              onClick={() => triggerWakeTriggerChip('Hi Explorer')}
+              className="text-xs font-mono font-medium px-2 py-0.5 rounded-md bg-slate-850 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 transition"
+              title="Click to awaken with 'Hi Explorer'"
+            >
+              "Hi Explorer"
+            </button>
+            <button
+              type="button"
+              onClick={() => simulateWakeWordQuery('Hey Explorer', 'what is the speed of light?')}
+              className="px-2.5 py-0.5 rounded-md bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-medium flex items-center gap-1 transition shadow-sm"
+              title="Simulate speaking 'Hey Explorer, what is the speed of light?'"
+            >
+              <Zap className="w-3 h-3 text-cyan-400" />
+              <span className="hidden sm:inline">Quick Test</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -725,7 +851,7 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
             </div>
           </div>
           <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono border border-emerald-500/40 shrink-0 font-bold">
-            {isContinuousMode ? 'LISTENING' : 'PAUSED'}
+            {micOption === 'always_on' && isAlwaysOnActive ? 'LISTENING' : 'ACTIVE'}
           </span>
         </div>
       )}
@@ -835,22 +961,26 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
         </div>
       )}
 
-      {/* Persistent Continuous Listening Status Banner */}
-      {isContinuousMode && (
+      {/* Persistent Continuous Always-On Status Banner */}
+      {micOption === 'always_on' && (
         <div className="px-4 py-1.5 bg-emerald-950/80 border-t border-emerald-500/40 flex items-center justify-between text-xs text-emerald-300">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isAlwaysOnActive ? 'bg-emerald-400' : 'bg-amber-400'} opacity-75`}></span>
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${isAlwaysOnActive ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
             </span>
-            <span className="font-semibold">Continuous Voice Listening: Say "Hey Explorer [question]" or speak directly...</span>
+            <span className="font-semibold">
+              {isAlwaysOnActive
+                ? 'Always-On Mic Active: Speak anytime. After answering, it will keep listening automatically!'
+                : 'Always-On Mic is Paused: Click "Resume" or the microphone button to continue listening.'}
+            </span>
           </div>
           <button
             type="button"
             onClick={toggleMic}
-            className="text-[11px] font-bold text-slate-400 hover:text-rose-300 underline"
+            className="text-[11px] font-bold text-slate-300 hover:text-emerald-300 underline"
           >
-            Pause Mic
+            {isAlwaysOnActive ? 'Pause Mic' : 'Resume Listening'}
           </button>
         </div>
       )}
@@ -860,28 +990,89 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
         onSubmit={handleSend}
         className="p-3 bg-slate-950 border-t border-slate-800 flex items-center gap-2"
       >
+        {/* Main Microphone Action Button */}
         <button
           type="button"
           onClick={toggleMic}
           className={`h-10 px-3.5 rounded-xl flex items-center gap-2 shrink-0 transition font-medium text-xs ${
-            isMicCapturing
+            micOption === 'always_on'
+              ? isAlwaysOnActive
+                ? isSpeaking
+                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-lg shadow-cyan-500/30'
+                  : 'bg-emerald-500 text-slate-950 font-bold shadow-lg shadow-emerald-500/30 animate-pulse'
+                : 'bg-slate-850 hover:bg-slate-800 text-amber-300 border border-amber-600/50'
+              : isMicCapturing
               ? 'bg-rose-500 text-white font-bold shadow-lg shadow-rose-500/30 animate-pulse'
-              : 'bg-slate-850 hover:bg-slate-750 text-slate-200 hover:text-white border border-slate-700'
+              : isSpeaking
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+              : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-md shadow-cyan-600/20'
           }`}
-          title={isMicCapturing ? 'Microphone is ON — Click to finish & answer' : 'Click to turn ON microphone and ask your question'}
+          title={
+            micOption === 'always_on'
+              ? isAlwaysOnActive
+                ? 'Always-On is active and listening continuously — Click to pause'
+                : 'Always-On is paused — Click to resume continuous listening'
+              : isMicCapturing
+              ? 'Microphone is listening — Click to finish & send question'
+              : isSpeaking
+              ? 'Assistant is speaking answer (mic will stay stopped after)'
+              : 'Microphone is idle — Click to activate and ask your question (stops after answering)'
+          }
         >
-          {isMicCapturing ? (
+          {micOption === 'always_on' ? (
+            isAlwaysOnActive ? (
+              isSpeaking ? (
+                <>
+                  <Volume2 className="w-4 h-4 text-slate-950 animate-bounce" />
+                  <span className="hidden sm:inline">Speaking...</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping"></span>
+                  <Mic className="w-4 h-4 text-slate-950" />
+                  <span className="hidden sm:inline">Always-On (Listening)</span>
+                </>
+              )
+            ) : (
+              <>
+                <MicOff className="w-4 h-4 text-amber-400" />
+                <span className="hidden sm:inline">Always-On (Paused)</span>
+              </>
+            )
+          ) : isMicCapturing ? (
             <>
               <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
               <Mic className="w-4 h-4 text-white" />
               <span className="hidden sm:inline">Listening...</span>
             </>
+          ) : isSpeaking ? (
+            <>
+              <Volume2 className="w-4 h-4 text-cyan-400 animate-pulse" />
+              <span className="hidden sm:inline">Talking...</span>
+            </>
           ) : (
             <>
-              <Mic className="w-4 h-4 text-cyan-400" />
-              <span className="hidden sm:inline">Ask with Voice</span>
+              <Mic className="w-4 h-4 text-white" />
+              <span className="hidden sm:inline">Click to Ask</span>
             </>
           )}
+        </button>
+
+        {/* Quick Mode Switcher Chip */}
+        <button
+          type="button"
+          onClick={() => selectMicOption(micOption === 'always_on' ? 'click_to_ask' : 'always_on')}
+          className="h-10 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white border border-slate-800 text-[11px] flex items-center gap-1 shrink-0 transition"
+          title={
+            micOption === 'always_on'
+              ? 'Switch to "Click to Ask" (Idle until clicked, stops after answering)'
+              : 'Switch to "Always-On Mic" (Keeps listening and talking continuously)'
+          }
+        >
+          <Radio className={`w-3 h-3 ${micOption === 'always_on' ? 'text-emerald-400' : 'text-slate-500'}`} />
+          <span className="hidden md:inline">
+            {micOption === 'always_on' ? 'Always-On' : 'Click-to-Ask'}
+          </span>
         </button>
 
         <input
@@ -889,9 +1080,13 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={
-            isMicCapturing
+            micOption === 'always_on'
+              ? isAlwaysOnActive
+                ? '🟢 Always-On active — Listening... Speak your question anytime'
+                : '⏸️ Always-On paused — Click "Resume" or type your question'
+              : isMicCapturing
               ? '🎤 Listening to your voice... Speak your question now'
-              : 'Click "Ask with Voice" or type your question here...'
+              : 'Click "Click to Ask" or type your question here...'
           }
           className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400"
         />

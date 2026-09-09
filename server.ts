@@ -88,11 +88,56 @@ app.post('/api/chat', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
 
   const systemPrompt = buildSystemPrompt(settings);
+  const llmProvider = settings.llmProvider || 'groq';
   const groqApiKey = settings.groqApiKey || process.env.GROQ_API_KEY;
-  const geminiApiKey = process.env.GEMINI_API_KEY;
+  const geminiApiKey = settings.geminiApiKey || process.env.GEMINI_API_KEY;
+  const geminiModelName = settings.geminiModel || 'gemini-3.8-flash';
+  const temperature = typeof settings.temperature === 'number' ? settings.temperature : 0.6;
+  const maxTokens = typeof settings.maxTokens === 'number' ? settings.maxTokens : 3000;
 
-  // 1. Try Groq if available (sub-200ms latency)
-  if (groqApiKey && groqApiKey.trim().length > 5) {
+  const runGemini = async (): Promise<boolean> => {
+    if (!geminiApiKey) return false;
+    try {
+      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+      const contents = [
+        ...history.slice(-4).map((m: any) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }]
+        })),
+        {
+          role: 'user',
+          parts: [{ text: query.trim() }]
+        }
+      ];
+
+      const responseStream = await ai.models.generateContentStream({
+        model: geminiModelName,
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: Math.min(Math.max(temperature, 0.0), 1.2),
+          maxOutputTokens: maxTokens
+        }
+      });
+
+      for await (const chunk of responseStream) {
+        const text = chunk.text;
+        if (text) {
+          res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        }
+      }
+
+      res.write('data: [DONE]\n\n');
+      res.end();
+      return true;
+    } catch (geminiErr) {
+      console.error('[Server] Gemini request error:', geminiErr);
+      return false;
+    }
+  };
+
+  const runGroq = async (): Promise<boolean> => {
+    if (!groqApiKey || groqApiKey.trim().length < 5) return false;
     try {
       const messages = [
         { role: 'system', content: systemPrompt },
@@ -107,10 +152,10 @@ app.post('/api/chat', async (req, res) => {
           'Authorization': `Bearer ${groqApiKey.trim()}`
         },
         body: JSON.stringify({
-          model: settings.groqModel || 'llama-3.1-8b-instant',
+          model: settings.groqModel || 'llama-3.3-70b-versatile',
           messages,
-          temperature: Math.min(settings.temperature || 0.6, 0.7),
-          max_tokens: Math.max(settings.maxTokens || 4000, 4500),
+          temperature: Math.min(Math.max(temperature, 0.0), 1.2),
+          max_tokens: maxTokens,
           stream: true
         })
       });
@@ -132,7 +177,8 @@ app.post('/api/chat', async (req, res) => {
             const dataStr = trimmed.replace(/^data:\s*/, '');
             if (dataStr === '[DONE]') {
               res.write('data: [DONE]\n\n');
-              return res.end();
+              res.end();
+              return true;
             }
 
             try {
@@ -145,50 +191,26 @@ app.post('/api/chat', async (req, res) => {
           }
         }
         res.write('data: [DONE]\n\n');
-        return res.end();
+        res.end();
+        return true;
       }
     } catch (groqErr) {
-      console.warn('[Server] Groq request failed, falling back to Gemini:', groqErr);
+      console.warn('[Server] Groq request error:', groqErr);
     }
-  }
+    return false;
+  };
 
-  // 2. Try Gemini 3.8 Flash via @google/genai
-  if (geminiApiKey) {
-    try {
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-      const contents = [
-        ...history.slice(-4).map((m: any) => ({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.content }]
-        })),
-        {
-          role: 'user',
-          parts: [{ text: query.trim() }]
-        }
-      ];
-
-      const responseStream = await ai.models.generateContentStream({
-        model: 'gemini-3.8-flash',
-        contents,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.6,
-          maxOutputTokens: Math.max(settings.maxTokens || 4000, 5000)
-        }
-      });
-
-      for await (const chunk of responseStream) {
-        const text = chunk.text;
-        if (text) {
-          res.write(`data: ${JSON.stringify({ text })}\n\n`);
-        }
-      }
-
-      res.write('data: [DONE]\n\n');
-      return res.end();
-    } catch (geminiErr) {
-      console.error('[Server] Gemini request failed:', geminiErr);
-    }
+  // Execution order based on configured llmProvider
+  if (llmProvider === 'gemini') {
+    const success = await runGemini();
+    if (success) return;
+    const fallbackGroq = await runGroq();
+    if (fallbackGroq) return;
+  } else {
+    const success = await runGroq();
+    if (success) return;
+    const fallbackGemini = await runGemini();
+    if (fallbackGemini) return;
   }
 
   // 3. Fallback built-in reply if external keys fail

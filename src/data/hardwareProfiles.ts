@@ -2,8 +2,48 @@ import {
   HardwareVariant, 
   CustomHardwareProfile, 
   DisplayType, 
-  PinConflict 
+  PinConflict,
+  WifiConfig,
+  CloudIntegrationConfig
 } from '../types';
+
+export const DEFAULT_WIFI_CONFIG: WifiConfig = {
+  ssid: 'MyHomeWiFi',
+  password: 'WiFiPassword123',
+  apSsid: 'Explore-AI-Assistant',
+  apPassword: '',
+  staticIpEnabled: false,
+  staticIp: '192.168.1.200',
+  gateway: '192.168.1.1',
+  subnet: '255.255.255.0',
+  dns: '8.8.8.8',
+  autoReconnect: true,
+  connectTimeoutSec: 15
+};
+
+export const DEFAULT_CLOUD_CONFIG: CloudIntegrationConfig = {
+  protocol: 'both',
+  webhook: {
+    enabled: true,
+    endpointUrl: 'https://webhook.site/explore-ai-demo',
+    authToken: 'Bearer secret_xyz',
+    httpMethod: 'POST',
+    triggerOnRelay: true,
+    triggerOnVoice: true
+  },
+  mqtt: {
+    enabled: true,
+    brokerHost: 'broker.hivemq.com',
+    brokerPort: 1883,
+    clientId: 'explore-ai-esp32',
+    username: '',
+    password: '',
+    baseTopic: 'explore_ai/esp32',
+    subscribeRelayCommands: true,
+    publishTelemetry: true,
+    qos: 0
+  }
+};
 
 export interface BoardSpecification {
   id: HardwareVariant;
@@ -75,7 +115,9 @@ export const HARDWARE_BOARDS: Record<HardwareVariant, BoardSpecification> = {
         actionButton: 0,
         resetButton: 4,
         statusLed: 2
-      }
+      },
+      wifi: DEFAULT_WIFI_CONFIG,
+      cloudIntegration: DEFAULT_CLOUD_CONFIG
     },
     notes: 'Classic DOIT DevKit V1 with WCH CH340G USB chip. When flashing via USB, hold the BOOT button for 2s if auto-reset capacitor is absent.'
   },
@@ -133,7 +175,9 @@ export const HARDWARE_BOARDS: Record<HardwareVariant, BoardSpecification> = {
         actionButton: 0,
         resetButton: 47,
         statusLed: 38
-      }
+      },
+      wifi: DEFAULT_WIFI_CONFIG,
+      cloudIntegration: DEFAULT_CLOUD_CONFIG
     },
     notes: 'Dual Type-C ports available. Connect to USB port (Native CDC) or UART port for flashing.'
   },
@@ -191,7 +235,9 @@ export const HARDWARE_BOARDS: Record<HardwareVariant, BoardSpecification> = {
         actionButton: 0,
         resetButton: 4,
         statusLed: 2
-      }
+      },
+      wifi: DEFAULT_WIFI_CONFIG,
+      cloudIntegration: DEFAULT_CLOUD_CONFIG
     },
     notes: 'The most popular classic ESP32 board. GPIO 34, 35, 36, and 39 are input-only.'
   },
@@ -249,7 +295,9 @@ export const HARDWARE_BOARDS: Record<HardwareVariant, BoardSpecification> = {
         actionButton: 9,
         resetButton: 0,
         statusLed: 10
-      }
+      },
+      wifi: DEFAULT_WIFI_CONFIG,
+      cloudIntegration: DEFAULT_CLOUD_CONFIG
     },
     notes: 'Ultra-low cost RISC-V core with hardware USB-Serial-JTAG peripheral.'
   },
@@ -302,7 +350,9 @@ export const HARDWARE_BOARDS: Record<HardwareVariant, BoardSpecification> = {
         actionButton: 0,
         resetButton: 12,
         statusLed: 4 // High power Flash LED
-      }
+      },
+      wifi: DEFAULT_WIFI_CONFIG,
+      cloudIntegration: DEFAULT_CLOUD_CONFIG
     },
     notes: 'Requires FTDI programmer to GPIO 0 + GND to enter flash mode.'
   },
@@ -364,7 +414,9 @@ export const HARDWARE_BOARDS: Record<HardwareVariant, BoardSpecification> = {
         actionButton: 0,
         resetButton: 2,
         statusLed: 2
-      }
+      },
+      wifi: DEFAULT_WIFI_CONFIG,
+      cloudIntegration: DEFAULT_CLOUD_CONFIG
     },
     notes: 'Large PSRAM memory enables local ring buffers for high sample rate audio and large voice models.'
   },
@@ -422,7 +474,9 @@ export const HARDWARE_BOARDS: Record<HardwareVariant, BoardSpecification> = {
         actionButton: 0,
         resetButton: 14,
         statusLed: 15
-      }
+      },
+      wifi: DEFAULT_WIFI_CONFIG,
+      cloudIntegration: DEFAULT_CLOUD_CONFIG
     },
     notes: 'Single-core with native USB-OTG full-speed.'
   }
@@ -748,3 +802,11 @@ void setAllRelays(bool state) {
 }
 `;
 }
+
+// Re-export full firmware generators
+export {
+  generateUnifiedFirmwareIno,
+  generatePlatformIoIni,
+  generateConfigHeader
+} from './firmwareGenerator';
+
