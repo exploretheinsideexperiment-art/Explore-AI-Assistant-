@@ -19,6 +19,8 @@ import { FirmwareBrowser } from './components/FirmwareBrowser';
 import { PinConfigurator } from './components/PinConfigurator';
 import { UsbFlasherView } from './components/UsbFlasherView';
 import { ManualGuidelines } from './components/ManualGuidelines';
+import { usePWAInstall } from './services/usePWAInstall';
+import { AppleInstallPrompt } from './components/AppleInstallPrompt';
 
 function sanitizeHardwareProfile(raw: unknown): CustomHardwareProfile {
   const defaultBoard = HARDWARE_BOARDS['ESP32-S3'] || Object.values(HARDWARE_BOARDS)[0];
@@ -91,11 +93,11 @@ export default function App() {
     if (typeof window !== 'undefined' && window.location.hash) {
       const hash = window.location.hash.replace('#', '');
       const validTabs: ActiveTab[] = ['console', 'settings', 'device', 'hardware', 'knowledge', 'firmware', 'pinout', 'usbflash', 'portal', 'manual'];
-      if (validTabs.includes(hash as ActiveTab)) {
+      if (hash && hash !== 'usbflash' && validTabs.includes(hash as ActiveTab)) {
         return hash as ActiveTab;
       }
     }
-    return 'usbflash';
+    return 'console';
   });
 
   // Keep window.location.hash in sync with activeTab
@@ -106,6 +108,7 @@ export default function App() {
   }, [activeTab]);
 
   const [displayState, setDisplayState] = useState<DisplayState>('READY');
+  const pwaState = usePWAInstall();
 
   // Custom hardware profile state with local persistence
   const [customProfile, setCustomProfile] = useState<CustomHardwareProfile>(() => {
@@ -201,6 +204,7 @@ export default function App() {
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         device={device}
+        pwaState={pwaState}
       />
 
       {/* Main Content Area */}
@@ -208,7 +212,7 @@ export default function App() {
         {activeTab === 'console' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Left Column: OLED Face Simulator */}
-            <div className="lg:col-span-5 space-y-4">
+            <div className="lg:col-span-4 space-y-4">
               <OledSimulator
                 state={displayState}
                 onStateChange={setDisplayState}
@@ -216,19 +220,10 @@ export default function App() {
                 networkIP={device.ipAddress}
                 rssi={device.rssi}
               />
-              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 text-xs text-slate-400 space-y-2">
-                <div className="font-semibold text-slate-300 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-cyan-400" />
-                  <span>Real-time Hardware Synchronization</span>
-                </div>
-                <p className="leading-relaxed">
-                  The OLED display above reacts live: when you activate the microphone it switches to <strong className="text-cyan-300">LISTENING</strong>, while the LLM generates tokens it shifts to <strong className="text-cyan-300">PROCESSING</strong>, and during voice output it bounces with <strong className="text-cyan-300">SPEAKING</strong>!
-                </p>
-              </div>
             </div>
 
-            {/* Right Column: Voice & Chat Console */}
-            <div className="lg:col-span-7">
+            {/* Right Column: Voice & Chat Console (Enlarged) */}
+            <div className="lg:col-span-8">
               <VoiceChatConsole
                 settings={agentSettings}
                 onOledStateChange={setDisplayState}
@@ -332,10 +327,17 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>Explore AI Assistant &bull; ESP32, INMP441, MAX98357A, SSD1306, Groq & Gemini</span>
-          <span className="font-mono text-[11px] text-slate-400">Open-Source Apache 2.0</span>
+          <span>Made by Eie-technology. (Explore the inside experiment-technology)</span>
+          <span className="font-mono text-[11px] text-slate-400">Open-Source Apache 2.0 (Designed By:- VipulSingh).</span>
         </div>
       </footer>
+
+      {/* Guided Apple iOS & Mobile PWA Installation Sheet */}
+      <AppleInstallPrompt
+        isOpen={pwaState.showAppleModal}
+        onClose={pwaState.closeAppleModal}
+        isSafari={pwaState.isSafari}
+      />
     </div>
   );
 }

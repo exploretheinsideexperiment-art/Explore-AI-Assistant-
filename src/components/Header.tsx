@@ -1,6 +1,7 @@
 import React from 'react';
-import { Cpu, Wifi, Sparkles, Sliders, Monitor, BookOpen, Terminal, Smartphone, Usb, SlidersHorizontal } from 'lucide-react';
+import { Cpu, Wifi, Sparkles, Sliders, Monitor, BookOpen, Terminal, Smartphone, Usb, SlidersHorizontal, Apple, Download, CheckCircle } from 'lucide-react';
 import { DeviceInfo, ActiveTab } from '../types';
+import { PWAInstallState } from '../services/usePWAInstall';
 
 export type { ActiveTab };
 
@@ -8,12 +9,14 @@ interface HeaderProps {
   activeTab: ActiveTab;
   onSelectTab: (tab: ActiveTab) => void;
   device: DeviceInfo;
+  pwaState?: PWAInstallState;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   onSelectTab,
-  device
+  device,
+  pwaState
 }) => {
   const tabs: { id: ActiveTab; label: string; icon: React.ReactNode; badge?: string }[] = [
     { id: 'console', label: 'Live Assistant', icon: <Sparkles className="w-4 h-4" /> },
@@ -60,12 +63,42 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-slate-400 text-[11px]">{device.ssid}</span>
           </div>
 
-          {/* Android PWA Install Pill */}
+          {/* Mobile & Desktop PWA Installation Action */}
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-300">
-              <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Android PWA Ready</span>
-            </div>
+            {pwaState?.isInstalled ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/70 border border-emerald-800/60 text-[11px] text-emerald-300 font-medium">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline">Installed PWA</span>
+                <span className="sm:hidden">Installed</span>
+              </div>
+            ) : pwaState?.isApple ? (
+              <button
+                onClick={pwaState.openAppleModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-sky-500 hover:from-cyan-500 hover:to-sky-400 text-white text-[11px] font-semibold transition shadow-sm shadow-cyan-500/20 active:scale-95"
+                title="Install Explore AI on Apple iPhone or iPad"
+              >
+                <Apple className="w-3.5 h-3.5" />
+                <span>Install on iPhone</span>
+              </button>
+            ) : pwaState?.isAndroid ? (
+              <button
+                onClick={pwaState.triggerInstall}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-sky-500 hover:from-cyan-500 hover:to-sky-400 text-white text-[11px] font-semibold transition shadow-sm shadow-cyan-500/20 active:scale-95"
+                title="Install Explore AI on Android"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-cyan-200" />
+                <span>Install App</span>
+              </button>
+            ) : (
+              <button
+                onClick={pwaState?.triggerInstall}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-[11px] text-slate-300 hover:text-white transition active:scale-95"
+                title="Install Explore AI on Apple, Android, or PC"
+              >
+                <Download className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Install App</span>
+              </button>
+            )}
           </div>
         </div>
 

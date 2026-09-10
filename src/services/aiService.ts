@@ -78,7 +78,8 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
     history: ChatMessage[],
     settings: AgentSettings,
     onSentence?: (sentence: string, isFirst: boolean) => void,
-    onUpdate?: (fullText: string) => void
+    onUpdate?: (fullText: string) => void,
+    abortSignal?: AbortSignal
   ): Promise<{ text: string; searchUsed: boolean; searchQueries?: string[] }> {
     const sentenceDelimiters = /(?<=[.?!।\n])\s+/;
 
@@ -90,13 +91,22 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
       let isFirst = true;
 
       while (true) {
+        if (abortSignal?.aborted) {
+          try { reader.cancel(); } catch (e) {}
+          break;
+        }
         const { done, value } = await reader.read();
         if (done) break;
+        if (abortSignal?.aborted) {
+          try { reader.cancel(); } catch (e) {}
+          break;
+        }
 
         const chunk = decoder.decode(value, { stream: true });
         const lines = chunk.split('\n');
 
         for (const line of lines) {
+          if (abortSignal?.aborted) break;
           const trimmed = line.trim();
           if (!trimmed.startsWith('data:')) continue;
           const dataStr = trimmed.replace(/^data:\s*/, '');
@@ -108,7 +118,7 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
             if (delta) {
               fullText += delta;
               sentenceBuffer += delta;
-              if (onUpdate) onUpdate(fullText);
+              if (onUpdate && !abortSignal?.aborted) onUpdate(fullText);
 
               if (sentenceDelimiters.test(sentenceBuffer) || (sentenceBuffer.length > 80 && /\s/.test(sentenceBuffer.slice(-5)))) {
                 const parts = sentenceBuffer.split(sentenceDelimiters);
@@ -116,7 +126,7 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
                   while (parts.length > 1) {
                     const completedSentence = parts.shift()?.trim();
                     if (completedSentence && completedSentence.length > 2) {
-                      if (onSentence) onSentence(completedSentence, isFirst);
+                      if (onSentence && !abortSignal?.aborted) onSentence(completedSentence, isFirst);
                       isFirst = false;
                     }
                   }
@@ -130,7 +140,7 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
 
       const remaining = sentenceBuffer.trim();
       if (remaining.length > 0) {
-        if (onSentence) onSentence(remaining, isFirst);
+        if (onSentence && !abortSignal?.aborted) onSentence(remaining, isFirst);
       }
 
       return fullText.trim();
@@ -140,6 +150,12 @@ ${settings.systemPromptAddition ? 'Additional instructions: ' + settings.systemP
     try {
       const abortCtrl = new AbortController();
       const abortTimer = setTimeout(() => abortCtrl.abort(), 2200);
+
+      if (abortSignal) {
+        abortSignal.addEventListener('abort', () => {
+          try { abortCtrl.abort(); } catch (e) {}
+        });
+      }
 
       const res = await fetch('/api/chat', {
         method: 'POST',

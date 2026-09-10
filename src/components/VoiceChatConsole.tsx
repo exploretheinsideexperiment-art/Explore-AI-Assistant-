@@ -3,7 +3,9 @@ import { ChatMessage, AgentSettings, DisplayState, VoiceGender } from '../types'
 import { aiService } from '../services/aiService';
 import { ttsService } from '../services/ttsService';
 import { wakeWordService } from '../services/wakeWordService';
-import { Mic, MicOff, Send, Volume2, Sparkles, RefreshCw, Cpu, Bot, User, Check, Radio, Zap } from 'lucide-react';
+import { evaluateSpeechInput } from '../utils/questionDetector';
+import { noiseCancellationService, NoiseCancellationStats } from '../services/noiseCancellationService';
+import { Mic, MicOff, Send, Volume2, Sparkles, RefreshCw, Cpu, Bot, User, Check, Radio, Zap, ShieldCheck, Waves } from 'lucide-react';
 
 interface VoiceChatConsoleProps {
   settings: AgentSettings;
@@ -39,6 +41,12 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListeningToFullQuestion, setIsListeningToFullQuestion] = useState(false);
   const [wakeNotice, setWakeNotice] = useState<{ message: string; query?: string } | null>(null);
+  const [ncStats, setNcStats] = useState<NoiseCancellationStats>({
+    isActive: false,
+    rmsLevel: 0,
+    isVoiceActive: false,
+    noiseFloorDb: -60
+  });
 
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -54,6 +62,24 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
   const handleSendRef = useRef<(e?: React.FormEvent, customText?: string) => Promise<void>>(async () => {});
   const currentSpeechCandidateRef = useRef<string>('');
   const inputRef = useRef<string>(input);
+  const activeAbortControllerRef = useRef<AbortController | null>(null);
+
+  // Subscribe to real-time noise cancellation and acoustic telemetry
+  useEffect(() => {
+    const unsub = noiseCancellationService.subscribeStats((stats) => {
+      setNcStats(stats);
+    });
+
+    if (micOption === 'always_on' && isAlwaysOnActive) {
+      noiseCancellationService.startNoiseCancellation().catch((err) => {
+        console.warn('[NoiseCancellation] Activation note:', err);
+      });
+    }
+
+    return () => {
+      unsub();
+    };
+  }, []);
 
   useEffect(() => {
     inputRef.current = input;
@@ -103,7 +129,9 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
   const safeStartRecognition = useCallback(() => {
     if (!recognitionRef.current) return;
     if (isRecognitionActiveRef.current) return;
-    if (isSpeakingRef.current) return;
+    // In click-to-ask mode, don't start while assistant is speaking.
+    // In always-on mode, KEEP MIC RUNNING so user can interrupt at any time!
+    if (isSpeakingRef.current && micOptionRef.current !== 'always_on') return;
     try {
       recognitionRef.current.start();
       isRecognitionActiveRef.current = true;
@@ -159,16 +187,12 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
       recognition.onstart = () => {
         isRecognitionActiveRef.current = true;
         setIsMicCapturing(true);
-        onOledStateChange('LISTENING');
+        if (!isSpeakingRef.current && !isProcessingRef.current) {
+          onOledStateChange('LISTENING');
+        }
       };
 
       recognition.onresult = (event: any) => {
-        // While Explore AI is actively speaking aloud or processing, ignore incoming mic audio
-        // to prevent acoustic feedback loop where the assistant listens to its own voice
-        if (isSpeakingRef.current || isProcessingRef.current) {
-          return;
-        }
-
         const results = event.results;
         let fullTranscript = '';
         let hasFinal = false;
@@ -182,114 +206,124 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
         fullTranscript = fullTranscript.trim();
         if (!fullTranscript) return;
 
-        setInput(fullTranscript);
-        inputRef.current = fullTranscript;
+        // While Explore AI is processing or speaking, do NOT capture microphone audio
+        // (prevents acoustic speaker feedback loop and accidental cancellation)
+        if (isSpeakingRef.current || isProcessingRef.current) {
+          return;
+        }
 
-        // Analyze for wake phrases: "Hey Explorer", "Hi Explorer", "Hello Explorer"
-        const parsed = wakeWordService.parseWakeWord(fullTranscript);
+        // EVALUATE SPEECH INPUT:
+        // "Hear only the question being asked and ignore the rest of the sound."
+        const speechEvaluation = evaluateSpeechInput(fullTranscript);
 
-        // Wake word alone spoken without question yet: e.g. "Hey Explorer"
-        if (parsed.hasWakeWord && (!parsed.cleanedQuery || parsed.cleanedQuery.trim().length < 2)) {
+        // Check if wake word was activated ("Hey Explorer")
+        const wakeCheck = wakeWordService.parseWakeWord(fullTranscript);
+        if (wakeCheck.hasWakeWord && wakeCheck.isWakeOnly) {
           if (!wakeWordAwakenedRef.current) {
             wakeWordService.playWakeChime();
             wakeWordAwakenedRef.current = true;
             setIsListeningToFullQuestion(true);
-            triggerWakeNotice(`⚡ "${parsed.matchedPhrase || 'Hey Explorer'}" awakened! Listening for your question...`);
+            triggerWakeNotice(`⚡ "${wakeCheck.matchedPhrase || 'Hey Explorer'}" awakened! Ask your question...`);
             onOledStateChange('LISTENING');
           }
           return;
         }
 
-        // Extract query candidate: remove wake word prefix if present, otherwise take raw speech
-        const queryCandidate = (parsed.hasWakeWord && parsed.cleanedQuery)
-          ? parsed.cleanedQuery.trim()
-          : fullTranscript.trim();
+        // Ignore ambient room sound, filler artifacts ("uh", "um", "hmm", coughing, TV background)
+        if (speechEvaluation.isNoise && !wakeWordAwakenedRef.current) {
+          // Pure ambient noise or stray non-question sounds are ignored
+          return;
+        }
 
-        currentSpeechCandidateRef.current = queryCandidate;
+        // Extract genuine question candidate
+        const questionQuery = speechEvaluation.cleanQuery || (wakeCheck.cleanedQuery || fullTranscript).trim();
+        if (!questionQuery || questionQuery.length < 2) return;
 
-        if (queryCandidate.length >= 2) {
-          setIsListeningToFullQuestion(true);
-          onOledStateChange('LISTENING');
+        setInput(questionQuery);
+        inputRef.current = questionQuery;
+        currentSpeechCandidateRef.current = questionQuery;
+        setIsListeningToFullQuestion(true);
+        onOledStateChange('LISTENING');
 
-          // Clear any running silence timer because speaker is actively formulating
-          if (speechEndTimerRef.current) {
-            clearTimeout(speechEndTimerRef.current);
-            speechEndTimerRef.current = null;
-          }
+        // Reset debounce timer as new speech fragments arrive
+        if (speechEndTimerRef.current) {
+          clearTimeout(speechEndTimerRef.current);
+          speechEndTimerRef.current = null;
+        }
 
-          // Immediate response: when the browser marks utterance as final, respond in 100ms.
-          // For interim pauses, wait 350ms.
-          const delayMs = hasFinal ? 100 : 350;
+        // PROMPT, RELIABLE DISPATCH:
+        // If the speech engine marked hasFinal = true, the phrase is locked. Dispatch in 350ms.
+        // If interim (hasFinal = false), allow 800ms of silence before answering.
+        const dispatchDelay = hasFinal ? 350 : 800;
 
-          speechEndTimerRef.current = setTimeout(() => {
+        speechEndTimerRef.current = setTimeout(() => {
+          const finalCandidate = (currentSpeechCandidateRef.current || questionQuery).trim();
+          if (finalCandidate && !isProcessingRef.current && !isSpeakingRef.current) {
             setIsListeningToFullQuestion(false);
             wakeWordAwakenedRef.current = false;
-            safeStopRecognition();
-            onOledStateChange('PROCESSING');
-            const finalQuery = (currentSpeechCandidateRef.current || queryCandidate).trim();
             currentSpeechCandidateRef.current = '';
-            if (finalQuery.length >= 2) {
-              handleSendRef.current(undefined, finalQuery);
+            if (micOptionRef.current !== 'always_on') {
+              safeStopRecognition();
             }
-          }, delayMs);
-        }
+            onOledStateChange('PROCESSING');
+            handleSendRef.current(undefined, finalCandidate);
+          }
+        }, dispatchDelay);
       };
 
       recognition.onspeechend = () => {
-        // User stopped speaking: dispatch answer immediately!
-        const query = (currentSpeechCandidateRef.current || inputRef.current || '').trim();
-        if (query.length >= 2 && !isProcessingRef.current && !isSpeakingRef.current) {
-          if (speechEndTimerRef.current) {
-            clearTimeout(speechEndTimerRef.current);
-            speechEndTimerRef.current = null;
+        // Browser Voice Activity Detector detected speech end:
+        const candidate = (currentSpeechCandidateRef.current || inputRef.current || '').trim();
+        if (candidate && !isProcessingRef.current && !isSpeakingRef.current) {
+          const evalRes = evaluateSpeechInput(candidate);
+          if (evalRes.isQuestion || wakeWordAwakenedRef.current) {
+            if (speechEndTimerRef.current) {
+              clearTimeout(speechEndTimerRef.current);
+              speechEndTimerRef.current = null;
+            }
+            speechEndTimerRef.current = setTimeout(() => {
+              const queryToSend = (currentSpeechCandidateRef.current || candidate).trim();
+              if (queryToSend && !isProcessingRef.current && !isSpeakingRef.current) {
+                currentSpeechCandidateRef.current = '';
+                setIsListeningToFullQuestion(false);
+                wakeWordAwakenedRef.current = false;
+                onOledStateChange('PROCESSING');
+                handleSendRef.current(undefined, queryToSend);
+              }
+            }, 250);
           }
-          currentSpeechCandidateRef.current = '';
-          setIsListeningToFullQuestion(false);
-          wakeWordAwakenedRef.current = false;
-          safeStopRecognition();
-          onOledStateChange('PROCESSING');
-          handleSendRef.current(undefined, query);
         }
       };
 
       recognition.onsoundend = () => {
-        const query = (currentSpeechCandidateRef.current || inputRef.current || '').trim();
-        if (query.length >= 2 && !isProcessingRef.current && !isSpeakingRef.current) {
-          if (speechEndTimerRef.current) {
-            clearTimeout(speechEndTimerRef.current);
-            speechEndTimerRef.current = null;
-          }
-          currentSpeechCandidateRef.current = '';
-          setIsListeningToFullQuestion(false);
-          wakeWordAwakenedRef.current = false;
-          safeStopRecognition();
-          onOledStateChange('PROCESSING');
-          handleSendRef.current(undefined, query);
-        }
+        // Handled via onspeechend and timer.
       };
 
       recognition.onend = () => {
         isRecognitionActiveRef.current = false;
         setIsMicCapturing(false);
 
-        // Instant response on mobile/Android silence detection:
-        // When speech recognition ends and there is a valid candidate, dispatch immediately!
-        const pendingQuery = (currentSpeechCandidateRef.current || inputRef.current || '').trim();
-        if (pendingQuery.length >= 2 && !isProcessingRef.current && !isSpeakingRef.current) {
-          if (speechEndTimerRef.current) {
-            clearTimeout(speechEndTimerRef.current);
-            speechEndTimerRef.current = null;
+        // If recognition closed with an unanswered valid question, DISPATCH IT!
+        const pending = (currentSpeechCandidateRef.current || inputRef.current || '').trim();
+        if (pending && !isProcessingRef.current && !isSpeakingRef.current) {
+          const evalRes = evaluateSpeechInput(pending);
+          if (evalRes.isQuestion || wakeWordAwakenedRef.current) {
+            if (speechEndTimerRef.current) {
+              clearTimeout(speechEndTimerRef.current);
+              speechEndTimerRef.current = null;
+            }
+            currentSpeechCandidateRef.current = '';
+            setIsListeningToFullQuestion(false);
+            wakeWordAwakenedRef.current = false;
+            onOledStateChange('PROCESSING');
+            handleSendRef.current(undefined, pending);
+            return;
           }
-          currentSpeechCandidateRef.current = '';
-          setIsListeningToFullQuestion(false);
-          wakeWordAwakenedRef.current = false;
-          onOledStateChange('PROCESSING');
-          handleSendRef.current(undefined, pendingQuery);
-          return;
         }
 
         // Always-On Option: Continuous listening loop!
-        // When recognition ends due to browser timeout or silence, auto-restart so mic is always active!
+        // When recognition ends due to browser silence timeout, auto-restart immediately
+        // (as long as assistant is not speaking/processing)
         if (micOptionRef.current === 'always_on' && isAlwaysOnActiveRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
           if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
           restartTimeoutRef.current = setTimeout(() => {
@@ -338,7 +372,9 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
       if (onUpdateSettings) {
         onUpdateSettings({ voiceMode: 'continuous' });
       }
-      triggerWakeNotice('🟢 Always-On Mic Activated: Keeps listening & talking continuously in hands-free loop!');
+      // Activate hardware Acoustic Echo Cancellation (AEC) & DSP noise reduction
+      noiseCancellationService.startNoiseCancellation().catch(() => {});
+      triggerWakeNotice('🟢 Always-On Mic + Noise Cancellation Active: Listens to entire conversation & allows live interruption!');
       wakeWordService.playWakeChime();
       ttsService.stop();
       setIsSpeaking(false);
@@ -357,9 +393,36 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
     }
   };
 
+  const handleInterruptSpeech = useCallback(() => {
+    ttsService.stop();
+    setIsSpeaking(false);
+    isSpeakingRef.current = false;
+    setIsProcessing(false);
+    isProcessingRef.current = false;
+    if (activeAbortControllerRef.current) {
+      try {
+        activeAbortControllerRef.current.abort();
+      } catch (e) {}
+      activeAbortControllerRef.current = null;
+    }
+    wakeWordAwakenedRef.current = false;
+    currentSpeechCandidateRef.current = '';
+    setInput('');
+    inputRef.current = '';
+    safeStartRecognition();
+    onOledStateChange('LISTENING');
+    triggerWakeNotice('🛑 Assistant paused. Listening for your question now...');
+  }, [safeStartRecognition, onOledStateChange]);
+
   const toggleMic = () => {
     if (!recognitionRef.current) {
       alert('Speech recognition is not supported in this browser. Please use Google Chrome or type your message.');
+      return;
+    }
+
+    // If assistant is currently speaking, clicking mic interrupts and starts listening
+    if (isSpeaking) {
+      handleInterruptSpeech();
       return;
     }
 
@@ -374,10 +437,11 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
       } else {
         setIsAlwaysOnActive(true);
         isAlwaysOnActiveRef.current = true;
+        noiseCancellationService.startNoiseCancellation().catch(() => {});
         ttsService.stop();
         setIsSpeaking(false);
         wakeWordService.playWakeChime();
-        triggerWakeNotice('🟢 Always-On Mic Resumed — Listening continuously...');
+        triggerWakeNotice('🟢 Always-On Mic Active: Listening for questions, noise ignored...');
         safeStartRecognition();
       }
     } else {
@@ -396,6 +460,7 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
         }
       } else {
         // User clicked idle mic to activate and ask
+        noiseCancellationService.startNoiseCancellation().catch(() => {});
         ttsService.stop();
         setIsSpeaking(false);
         wakeWordService.playWakeChime();
@@ -410,6 +475,7 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
   };
 
   const triggerWakeTriggerChip = (phrase: 'Hey Explorer' | 'Hi Explorer' | 'Hello Explorer') => {
+    noiseCancellationService.startNoiseCancellation().catch(() => {});
     ttsService.stop();
     setIsSpeaking(false);
     wakeWordAwakenedRef.current = true;
@@ -433,7 +499,8 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
     wakeWordAwakenedRef.current = false;
     currentSpeechCandidateRef.current = '';
 
-    // Stop active speech recognition while the assistant generates and speaks to prevent acoustic feedback loop
+    // Stop microphone recognition while assistant processes and speaks answer aloud.
+    // This prevents the microphone from hearing the speaker and looping!
     safeStopRecognition();
 
     // Check if query begins with wake phrase ("Hey Explorer", "Hi Explorer", "Hello Explorer") and clean it
@@ -456,6 +523,9 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
     isProcessingRef.current = true;
     onOledStateChange('PROCESSING');
 
+    // Create a new AbortController for this response stream to allow barge-in cancellation
+    activeAbortControllerRef.current = new AbortController();
+
     try {
       const asstMsgId = `asst-${Date.now()}`;
       let firstSentenceTriggered = false;
@@ -468,7 +538,7 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
         if (micOptionRef.current === 'always_on' && isAlwaysOnActiveRef.current) {
           // ALWAYS-ON CONVERSATION:
           // Keeps listening and talking in a continuous loop!
-          // As soon as the assistant finishes speaking, automatically resume listening!
+          // Ensure microphone is active and ready for the user's next question!
           setTimeout(() => {
             if (micOptionRef.current === 'always_on' && isAlwaysOnActiveRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
               wakeWordAwakenedRef.current = false;
@@ -494,6 +564,8 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
         messages,
         settings,
         (sentence, isFirst) => {
+          if (activeAbortControllerRef.current?.signal.aborted) return;
+
           // Speak immediately when first sentence is ready (<200ms!)
           if (isFirst || !firstSentenceTriggered) {
             firstSentenceTriggered = true;
@@ -504,12 +576,16 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
             onOledStateChange('SPEAKING');
           }
           ttsService.enqueueSentence(sentence, settings, () => {
-            setIsSpeaking(true);
-            isSpeakingRef.current = true;
-            onOledStateChange('SPEAKING');
+            if (!activeAbortControllerRef.current?.signal.aborted) {
+              setIsSpeaking(true);
+              isSpeakingRef.current = true;
+              onOledStateChange('SPEAKING');
+            }
           });
         },
         (fullText) => {
+          if (activeAbortControllerRef.current?.signal.aborted) return;
+
           // Real-time live chat bubble update
           setMessages(prev => {
             const existingIdx = prev.findIndex(m => m.id === asstMsgId);
@@ -530,7 +606,8 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
               ];
             }
           });
-        }
+        },
+        activeAbortControllerRef.current.signal
       );
 
       // Notify TTS service that LLM text generation is finished
@@ -561,7 +638,11 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
           ];
         }
       });
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || activeAbortControllerRef.current?.signal.aborted) {
+        console.log('[AI Stream] Interrupted cleanly by user barge-in speech');
+        return;
+      }
       console.error('Failed to get response:', err);
       ttsService.finishStreamingSession();
       onOledStateChange('ERROR');
@@ -645,7 +726,7 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
   ];
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl flex flex-col h-[540px] shadow-xl overflow-hidden">
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl flex flex-col min-h-[660px] h-[calc(100vh-210px)] max-h-[860px] shadow-xl overflow-hidden">
       {/* Top Header */}
       <div className="flex items-center justify-between px-5 py-3.5 bg-slate-950 border-b border-slate-800">
         <div className="flex items-center gap-2.5">
@@ -803,6 +884,17 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
               <span>{isAlwaysOnActive ? 'Loop: LISTENING' : 'Loop: PAUSED'}</span>
             </button>
           )}
+
+          {/* Noise Cancellation Badge */}
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/60 border border-emerald-600/40 text-emerald-300 text-xs font-semibold shadow-sm"
+            title="Active Hardware Acoustic Echo Cancellation (AEC), Ambient Noise Suppression (ANS), Highpass Filter (85Hz) & Vocal Clarifier"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden sm:inline">Noise Cancellation:</span>
+            <span className="text-emerald-400 font-bold">Active</span>
+            <Waves className={`w-3.5 h-3.5 ${ncStats.isVoiceActive ? 'text-emerald-400 animate-pulse' : 'text-slate-500'}`} />
+          </div>
         </div>
 
         {/* Wake Triggers & Quick Simulation */}
@@ -859,25 +951,25 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
       {/* Messages Stream */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-900/60 scroll-smooth"
+        className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-slate-900/60 scroll-smooth"
       >
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex items-start gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
+            className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
           >
             <div
-              className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-xs ${
+              className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-xs ${
                 msg.role === 'user'
                   ? 'bg-cyan-500 text-slate-950 font-bold'
                   : 'bg-slate-850 text-cyan-300 border border-slate-700'
               }`}
             >
-              {msg.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
+              {msg.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
             </div>
 
             <div
-              className={`max-w-[82%] sm:max-w-[75%] rounded-2xl px-4 py-3 text-xs leading-relaxed ${
+              className={`max-w-[88%] sm:max-w-[82%] rounded-2xl px-4 sm:px-5 py-3.5 text-xs sm:text-[13.5px] leading-relaxed ${
                 msg.role === 'user'
                   ? 'bg-cyan-600 text-white rounded-tr-none shadow-md'
                   : 'bg-slate-950 text-slate-200 border border-slate-800 rounded-tl-none shadow-sm'
@@ -885,15 +977,15 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
             >
               <p className="whitespace-pre-wrap">{msg.content}</p>
 
-              <div className="flex items-center justify-between mt-2 pt-1 border-t border-slate-800/40 text-[10px] text-slate-400">
+              <div className="flex items-center justify-between mt-2.5 pt-1.5 border-t border-slate-800/40 text-[10px] text-slate-400">
                 <span className="font-mono">{msg.timestamp}</span>
                 {msg.role === 'assistant' && (
                   <button
                     onClick={() => replayMessage(msg.content)}
-                    className="hover:text-cyan-300 flex items-center gap-1 transition"
+                    className="hover:text-cyan-300 flex items-center gap-1 transition text-[11px]"
                     title="Read Aloud via Speaker"
                   >
-                    <Volume2 className="w-3 h-3" />
+                    <Volume2 className="w-3.5 h-3.5" />
                     <span>Speak</span>
                   </button>
                 )}
@@ -934,13 +1026,15 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
 
       {/* Active Conversation Listening Indicator (Patiently Waiting for Complete Sentence) */}
       {isListeningToFullQuestion && (
-        <div className="px-4 py-1.5 bg-cyan-950/90 border-t border-cyan-500/40 flex items-center justify-between text-xs text-cyan-300 animate-pulse">
+        <div className="px-4 py-2 bg-gradient-to-r from-cyan-950 via-slate-900 to-cyan-950 border-t border-cyan-500/40 flex items-center justify-between text-xs text-cyan-300 animate-pulse">
           <div className="flex items-center gap-2 overflow-hidden">
-            <span className="relative flex h-2 w-2 shrink-0">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
             </span>
-            <span className="font-semibold truncate">Listening to your full question... (I'll answer after you finish speaking)</span>
+            <span className="font-semibold truncate">
+              Hearing question... (Ambient sound ignored. Auto-answering when you finish)
+            </span>
           </div>
           <button
             type="button"
@@ -954,15 +1048,36 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
               setIsListeningToFullQuestion(false);
               handleSendRef.current(undefined, targetText);
             }}
-            className="text-[11px] font-bold px-2 py-0.5 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 shrink-0 transition"
+            className="text-[11px] font-bold px-2.5 py-1 rounded-md bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 shrink-0 transition flex items-center gap-1"
           >
-            Answer Now ⚡
+            <span>Answer Now</span>
+            <span>⚡</span>
+          </button>
+        </div>
+      )}
+
+      {/* Active Speaking Banner with 1-Tap Interrupt Control */}
+      {isSpeaking && (
+        <div className="px-4 py-1.5 bg-indigo-950/90 border-t border-indigo-500/40 flex items-center justify-between text-xs text-indigo-200 animate-fadeIn">
+          <div className="flex items-center gap-2 overflow-hidden">
+            <Volume2 className="w-3.5 h-3.5 text-cyan-400 animate-pulse shrink-0" />
+            <span className="font-medium truncate">
+              Speaking answer... (Noise filtered out)
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleInterruptSpeech}
+            className="text-[11px] font-bold px-2.5 py-1 rounded-md bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 shrink-0 transition flex items-center gap-1"
+            title="Interrupt answer and ask a new question"
+          >
+            <span>🛑 Stop & Ask</span>
           </button>
         </div>
       )}
 
       {/* Persistent Continuous Always-On Status Banner */}
-      {micOption === 'always_on' && (
+      {micOption === 'always_on' && !isSpeaking && !isListeningToFullQuestion && (
         <div className="px-4 py-1.5 bg-emerald-950/80 border-t border-emerald-500/40 flex items-center justify-between text-xs text-emerald-300">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
@@ -971,7 +1086,7 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
             </span>
             <span className="font-semibold">
               {isAlwaysOnActive
-                ? 'Always-On Mic Active: Speak anytime. After answering, it will keep listening automatically!'
+                ? 'Always-On Mic Active: Hears only questions asked, ignores background sound.'
                 : 'Always-On Mic is Paused: Click "Resume" or the microphone button to continue listening.'}
             </span>
           </div>
@@ -988,13 +1103,13 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
       {/* Input Bottom Bar */}
       <form
         onSubmit={handleSend}
-        className="p-3 bg-slate-950 border-t border-slate-800 flex items-center gap-2"
+        className="p-3.5 sm:p-4 bg-slate-950 border-t border-slate-800 flex items-center gap-2.5"
       >
         {/* Main Microphone Action Button */}
         <button
           type="button"
           onClick={toggleMic}
-          className={`h-10 px-3.5 rounded-xl flex items-center gap-2 shrink-0 transition font-medium text-xs ${
+          className={`h-11 px-4 rounded-xl flex items-center gap-2 shrink-0 transition font-medium text-xs sm:text-sm ${
             micOption === 'always_on'
               ? isAlwaysOnActive
                 ? isSpeaking
@@ -1062,14 +1177,14 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
         <button
           type="button"
           onClick={() => selectMicOption(micOption === 'always_on' ? 'click_to_ask' : 'always_on')}
-          className="h-10 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white border border-slate-800 text-[11px] flex items-center gap-1 shrink-0 transition"
+          className="h-11 px-3 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white border border-slate-800 text-[11px] sm:text-xs flex items-center gap-1.5 shrink-0 transition"
           title={
             micOption === 'always_on'
               ? 'Switch to "Click to Ask" (Idle until clicked, stops after answering)'
               : 'Switch to "Always-On Mic" (Keeps listening and talking continuously)'
           }
         >
-          <Radio className={`w-3 h-3 ${micOption === 'always_on' ? 'text-emerald-400' : 'text-slate-500'}`} />
+          <Radio className={`w-3.5 h-3.5 ${micOption === 'always_on' ? 'text-emerald-400' : 'text-slate-500'}`} />
           <span className="hidden md:inline">
             {micOption === 'always_on' ? 'Always-On' : 'Click-to-Ask'}
           </span>
@@ -1088,7 +1203,7 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
               ? '🎤 Listening to your voice... Speak your question now'
               : 'Click "Click to Ask" or type your question here...'
           }
-          className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400"
+          className="flex-1 px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 h-11"
         />
 
         {isMicCapturing && (currentSpeechCandidateRef.current || input.trim()).length >= 2 && (
