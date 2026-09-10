@@ -10,7 +10,10 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "sync": "node scripts/sync-all.js",
+    "sync:all": "node scripts/sync-all.js",
     "sync:github": "node scripts/sync-all.js",
+    "push": "node scripts/sync-all.js",
+    "push:force": "node scripts/sync-all.js --force",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

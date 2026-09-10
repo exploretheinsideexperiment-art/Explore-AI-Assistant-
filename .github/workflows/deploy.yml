@@ -67,6 +67,7 @@ jobs:
           keep_files: false
 
       - name: Sync all files and build artifacts to GitHub at once
+        continue-on-error: true
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
