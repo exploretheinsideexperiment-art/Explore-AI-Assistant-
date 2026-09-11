@@ -61,30 +61,47 @@ if (fs.existsSync(distDir)) {
   }
   copyDirSync(path.join(distDir, 'assets'), rootAssetsDir);
 
-  // 6. Provide universal entry bridge (app-entry.js and app-style.css) and backwards-compatible index-MRXryAcI.js
+  // 6. Provide universal entry bridge (app-entry.js and app-style.css) and backwards-compatible bridges for cached URLs
   try {
+    const distHtml = fs.readFileSync(distIndex, 'utf-8');
+    const jsMatch = distHtml.match(/src=["']\.\/assets\/(index-[^"']+\.js)["']/);
+    const cssMatch = distHtml.match(/href=["']\.\/assets\/(index-[^"']+\.css)["']/);
+
     const assetFiles = fs.readdirSync(path.join(distDir, 'assets'));
-    const mainJs = assetFiles.find(f => f.startsWith('index-') && f.endsWith('.js') && f !== 'index-MRXryAcI.js');
-    const mainCss = assetFiles.find(f => f.startsWith('index-') && f.endsWith('.css'));
+    const mainJs = (jsMatch && jsMatch[1]) || assetFiles.find(f => f.startsWith('index-') && f.endsWith('.js') && !f.includes('MRXryAcI') && !f.includes('entry'));
+    const mainCss = (cssMatch && cssMatch[1]) || assetFiles.find(f => f.startsWith('index-') && f.endsWith('.css') && !f.includes('style'));
 
     if (mainJs) {
       const entryContent = `import './${mainJs}';\n`;
-      fs.writeFileSync(path.join(distDir, 'assets', 'app-entry.js'), entryContent, 'utf-8');
-      fs.writeFileSync(path.join(docsDir, 'assets', 'app-entry.js'), entryContent, 'utf-8');
-      fs.writeFileSync(path.join(rootAssetsDir, 'app-entry.js'), entryContent, 'utf-8');
+      const bridges = [
+        'app-entry.js',
+        'index-MRXryAcI.js',
+        'index-9e_7g_Gy.js',
+        'index-DpaMBjVr.js',
+        'index-NG6fe1Nt.js'
+      ];
 
-      // Compatibility bridge for any cached clients referencing index-MRXryAcI.js
-      fs.writeFileSync(path.join(distDir, 'assets', 'index-MRXryAcI.js'), entryContent, 'utf-8');
-      fs.writeFileSync(path.join(docsDir, 'assets', 'index-MRXryAcI.js'), entryContent, 'utf-8');
-      fs.writeFileSync(path.join(rootAssetsDir, 'index-MRXryAcI.js'), entryContent, 'utf-8');
-      console.log(`Created universal entry bridge app-entry.js -> ${mainJs}`);
+      for (const bridgeName of bridges) {
+        fs.writeFileSync(path.join(distDir, 'assets', bridgeName), entryContent, 'utf-8');
+        fs.writeFileSync(path.join(docsDir, 'assets', bridgeName), entryContent, 'utf-8');
+        fs.writeFileSync(path.join(rootAssetsDir, bridgeName), entryContent, 'utf-8');
+      }
+      console.log(`Created universal entry bridge app-entry.js & compat aliases -> ${mainJs}`);
     }
 
     if (mainCss) {
       const cssContent = `@import './${mainCss}';\n`;
-      fs.writeFileSync(path.join(distDir, 'assets', 'app-style.css'), cssContent, 'utf-8');
-      fs.writeFileSync(path.join(docsDir, 'assets', 'app-style.css'), cssContent, 'utf-8');
-      fs.writeFileSync(path.join(rootAssetsDir, 'app-style.css'), cssContent, 'utf-8');
+      const cssBridges = [
+        'app-style.css',
+        'index-MRXryAcI.css',
+        'index-UqVHjenE.css'
+      ];
+
+      for (const cssBridge of cssBridges) {
+        fs.writeFileSync(path.join(distDir, 'assets', cssBridge), cssContent, 'utf-8');
+        fs.writeFileSync(path.join(docsDir, 'assets', cssBridge), cssContent, 'utf-8');
+        fs.writeFileSync(path.join(rootAssetsDir, cssBridge), cssContent, 'utf-8');
+      }
       console.log(`Created universal style bridge app-style.css -> ${mainCss}`);
     }
   } catch (e) {

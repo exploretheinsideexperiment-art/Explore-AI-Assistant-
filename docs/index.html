@@ -64,12 +64,26 @@
             script.src = './assets/app-entry.js';
             document.head.appendChild(script);
           }
+
+          // Boot loader watchdog: If app hasn't mounted in 3.5s, provide direct recovery options
+          setTimeout(function() {
+            var loader = document.getElementById('app-boot-loader');
+            var status = document.getElementById('boot-status-text');
+            if (loader && status && !status.hasChildNodes()) {
+              status.innerHTML = '<div style="background:rgba(30,41,59,0.7);border:1px solid rgba(148,163,184,0.2);color:#cbd5e1;padding:12px;border-radius:10px;font-size:12px;margin-top:12px;">' +
+                '<div style="font-weight:600;color:#38bdf8;margin-bottom:6px;">Connecting assistant runtime...</div>' +
+                '<div style="display:flex;gap:8px;justify-content:center;margin-top:10px;">' +
+                '<button onclick="window.location.reload(true);" style="background:#0284c7;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">Reload</button>' +
+                '<button onclick="localStorage.clear();sessionStorage.clear();window.location.reload(true);" style="background:#334155;color:#e2e8f0;border:none;padding:6px 14px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">Reset Cache</button>' +
+                '</div></div>';
+            }
+          }, 3500);
         } catch (e) {
           console.warn('Navigation normalizer error:', e);
         }
       })();
     </script>
-    <script type="module" crossorigin src="./assets/index-9e_7g_Gy.js"></script>
+    <script type="module" crossorigin src="./assets/index-BPTvUih9.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-DcrhjY_p.css">
   </head>
   <body class="bg-[#080d1a] text-slate-100 antialiased font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
